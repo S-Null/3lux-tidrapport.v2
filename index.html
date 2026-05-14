@@ -1,0 +1,3702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0f2952" />
+<title>3LUX Live Work Control</title>
+
+<!-- PDF libraries (CDN). App must still work if these fail to load (graceful fallback to print). -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+/* ================================================================
+   3LUX LIVE WORK CONTROL  —  visual identity from Snabbguide v1.0
+   - Dark navy headers
+   - Warm yellow/orange for time / attention
+   - Green for approved / completed
+   - Red for delays / rejected
+   - Light blue/grey card backgrounds, rounded corners
+   ================================================================ */
+
+:root{
+  --navy:        #0f2952;
+  --navy-2:      #173f7c;
+  --navy-soft:   #1d4789;
+  --yellow:      #f5b324;   /* time, attention */
+  --orange:      #ef7d2a;   /* warning */
+  --red:         #d63a3a;   /* problem, late, rejected */
+  --green:       #2ea05c;   /* approved, on-time */
+  --green-soft:  #d8f0e2;
+  --blue-soft:   #cfe6f4;
+  --blue-pill:   #5db4dc;
+  --bg:          #f4f7fa;
+  --card:        #ffffff;
+  --card-alt:    #eef3f7;
+  --line:        #d9e1ea;
+  --text:        #1d2738;
+  --muted:       #6b7686;
+  --shadow:      0 2px 8px rgba(15,41,82,.08);
+  --radius:      14px;
+  --radius-sm:   10px;
+  --pad:         14px;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:15px;line-height:1.4;
+  overscroll-behavior-y:none;
+}
+body{padding-bottom:84px;}
+
+/* ---------- top app bar ---------- */
+.appbar{
+  position:sticky;top:0;z-index:50;
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));
+  color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;
+  box-shadow:0 2px 6px rgba(0,0,0,.18);
+}
+.appbar .logo{
+  width:34px;height:34px;border-radius:8px;background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--navy);font-weight:800;font-size:15px;letter-spacing:-.5px;
+}
+.appbar .logo span{color:var(--yellow)}
+.appbar .titles{flex:1;min-width:0}
+.appbar h1{margin:0;font-size:15px;font-weight:700;letter-spacing:.2px}
+.appbar .sub{font-size:11px;opacity:.85;margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appbar .ab-actions{display:flex;gap:6px}
+.appbar button.icon{
+  background:rgba(255,255,255,.14);color:#fff;border:none;
+  width:36px;height:36px;border-radius:9px;font-size:16px;cursor:pointer;
+}
+.appbar button.icon:active{background:rgba(255,255,255,.28)}
+
+/* ---------- bottom navigation ---------- */
+.bnav{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  background:#fff;border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(6,1fr);
+  padding:6px 4px;padding-bottom:max(6px,env(safe-area-inset-bottom));
+  box-shadow:0 -2px 8px rgba(15,41,82,.08);
+}
+.bnav button{
+  background:none;border:none;color:var(--muted);font-size:10.5px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 2px;border-radius:10px;cursor:pointer;font-weight:600;
+}
+.bnav button .ic{font-size:18px;line-height:1}
+.bnav button.active{color:var(--navy);background:var(--card-alt)}
+.bnav button.active .ic{transform:translateY(-1px)}
+
+/* ---------- views ---------- */
+.view{display:none;padding:14px 12px 20px;max-width:760px;margin:0 auto}
+.view.active{display:block}
+
+/* ---------- generic ---------- */
+.section-title{
+  font-size:13px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--navy);font-weight:700;margin:18px 4px 8px;
+}
+.card{
+  background:var(--card);border-radius:var(--radius);
+  padding:var(--pad);box-shadow:var(--shadow);margin-bottom:12px;
+  border:1px solid var(--line);
+}
+.card.tight{padding:10px 12px}
+.card-head{
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));
+  color:#fff;border-radius:var(--radius) var(--radius) 0 0;
+  padding:10px 14px;font-weight:700;font-size:14px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.card-head + .card-body{
+  background:#fff;border:1px solid var(--line);border-top:none;
+  border-radius:0 0 var(--radius) var(--radius);padding:12px 14px;margin-bottom:12px;
+}
+label{display:block;font-size:12px;font-weight:600;color:var(--muted);
+  margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+input[type=text],input[type=number],input[type=date],input[type=time],
+select,textarea{
+  width:100%;padding:11px 12px;border:1px solid var(--line);
+  border-radius:var(--radius-sm);font-size:15px;background:#fff;color:var(--text);
+  font-family:inherit;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy-soft);
+  box-shadow:0 0 0 3px rgba(23,63,124,.15)}
+textarea{resize:vertical;min-height:70px}
+.row{display:grid;gap:10px}
+.row.cols-2{grid-template-columns:1fr 1fr}
+.row.cols-3{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:480px){.row.cols-3{grid-template-columns:1fr 1fr}}
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:12px 16px;border-radius:var(--radius-sm);border:none;cursor:pointer;
+  font-size:15px;font-weight:700;font-family:inherit;
+  background:var(--navy);color:#fff;width:100%;transition:transform .05s;
+}
+.btn:active{transform:scale(.98)}
+.btn.alt{background:var(--card-alt);color:var(--navy);border:1px solid var(--line)}
+.btn.warn{background:var(--yellow);color:var(--navy)}
+.btn.green{background:var(--green);color:#fff}
+.btn.red{background:var(--red);color:#fff}
+.btn.ghost{background:transparent;color:var(--navy);border:1.5px solid var(--navy)}
+.btn.sm{padding:8px 12px;font-size:13px;width:auto}
+.btn.xs{padding:6px 10px;font-size:12px;width:auto;border-radius:8px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.btn-row .btn{flex:1;min-width:120px}
+
+/* ---------- chips & pills ---------- */
+.chip{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  background:var(--card-alt);color:var(--navy);border-radius:999px;
+  font-size:12px;font-weight:600;border:1px solid var(--line);
+}
+.chip.green{background:var(--green-soft);color:#1c5f37;border-color:#a8d8ba}
+.chip.yellow{background:#fff2cf;color:#7a5a00;border-color:#ecd9a3}
+.chip.red{background:#fad9d9;color:#7e1f1f;border-color:#f1adad}
+.chip.blue{background:var(--blue-soft);color:var(--navy);border-color:#a9cfe4}
+.chip.navy{background:var(--navy);color:#fff;border-color:var(--navy)}
+
+/* ---------- segmented control ---------- */
+.seg{display:flex;background:var(--card-alt);border-radius:10px;padding:3px;gap:3px}
+.seg button{
+  flex:1;background:none;border:none;padding:9px 6px;font-size:13px;
+  font-weight:600;border-radius:8px;cursor:pointer;color:var(--muted);
+  font-family:inherit;
+}
+.seg button.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+
+/* ---------- worker selection cards ---------- */
+.pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.pick-card{
+  background:#fff;border:1.5px solid var(--line);border-radius:12px;
+  padding:12px 10px;cursor:pointer;text-align:center;font-weight:600;font-size:14px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  transition:all .12s;
+}
+.pick-card:active{transform:scale(.97)}
+.pick-card.selected{border-color:var(--navy);background:var(--card-alt);
+  box-shadow:0 0 0 3px rgba(23,63,124,.12)}
+.pick-card .avatar{
+  width:38px;height:38px;border-radius:50%;background:var(--navy);
+  color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.pick-card .role{font-size:11px;color:var(--muted);font-weight:500}
+
+/* ---------- dirt level visual buttons ---------- */
+.dirt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(95px,1fr));gap:6px}
+.dirt-btn{
+  border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:8px 6px;
+  cursor:pointer;font-size:11.5px;font-weight:600;text-align:center;line-height:1.2;
+}
+.dirt-btn .mult{display:block;font-size:13px;color:var(--navy);font-weight:800;margin-top:3px}
+.dirt-btn.selected{border-width:2px;transform:scale(1.02)}
+.dirt-btn[data-sev="1"]{background:#e6f4ea;border-color:#7cc998}
+.dirt-btn[data-sev="2"]{background:#eff8e0}
+.dirt-btn[data-sev="3"]{background:#fff;border-color:var(--blue-pill)}
+.dirt-btn[data-sev="4"]{background:#fff5d4}
+.dirt-btn[data-sev="5"]{background:#ffeaba}
+.dirt-btn[data-sev="6"]{background:#ffd9a3}
+.dirt-btn[data-sev="7"]{background:#ffc185}
+.dirt-btn[data-sev="8"]{background:#ffa56b}
+.dirt-btn[data-sev="9"]{background:#ff8761;color:#fff}
+.dirt-btn[data-sev="10"]{background:#e8513b;color:#fff}
+.dirt-btn[data-sev="11"]{background:#a82020;color:#fff}
+.dirt-btn[data-sev="9"] .mult,.dirt-btn[data-sev="10"] .mult,.dirt-btn[data-sev="11"] .mult{color:#fff}
+
+/* ---------- active task card (the most important card) ---------- */
+.active-card{
+  background:#fff;border-radius:var(--radius);padding:14px;margin-bottom:12px;
+  border-left:6px solid var(--green);box-shadow:var(--shadow);
+}
+.active-card.warn{border-left-color:var(--yellow)}
+.active-card.late{border-left-color:var(--red);background:#fff7f5}
+.active-card.paused{border-left-color:var(--muted);opacity:.85}
+.active-card .worker{font-size:18px;font-weight:800;color:var(--navy);margin-bottom:2px}
+.active-card .task{font-size:14px;color:var(--text);margin-bottom:10px}
+.active-card .task .area{color:var(--muted)}
+.active-card .timer-big{
+  font-size:36px;font-weight:800;color:var(--navy);text-align:center;
+  font-variant-numeric:tabular-nums;letter-spacing:-1px;line-height:1;
+  margin:6px 0 4px;
+}
+.active-card.late .timer-big{color:var(--red)}
+.active-card.warn .timer-big{color:var(--orange)}
+.active-card .meta-row{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--muted);margin-bottom:8px;
+}
+.progress{height:8px;background:var(--card-alt);border-radius:99px;overflow:hidden;margin:8px 0 10px}
+.progress > div{height:100%;background:var(--green);transition:width .4s, background .4s;border-radius:99px}
+.active-card.warn .progress > div{background:var(--yellow)}
+.active-card.late .progress > div{background:var(--red)}
+
+/* ---------- table-style task list ---------- */
+.task-card{background:#fff;border-radius:10px;border:1px solid var(--line);padding:10px 12px;margin-bottom:8px}
+.task-card .tc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.task-card .tc-name{font-weight:700;color:var(--navy);font-size:14px}
+.task-card .tc-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.task-card .tc-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:12px}
+.task-card .tc-stats span b{color:var(--navy)}
+
+/* ---------- multi-select task checklist (bundle assign) ---------- */
+.task-multi-head{
+  display:flex;justify-content:space-between;align-items:center;gap:8px;
+  background:var(--card-alt);border-radius:10px;padding:8px 12px;margin-bottom:8px;
+  font-size:12px;
+}
+.task-multi-head .selcount{font-weight:700;color:var(--navy);font-size:13px}
+.task-multi-head .selsum{color:var(--muted);font-size:11px;margin-top:2px}
+.task-multi-head .actions{display:flex;gap:5px}
+.task-multi-list{display:flex;flex-direction:column;gap:6px}
+.task-multi-card{
+  background:#fff;border:1.5px solid var(--line);border-radius:10px;
+  padding:9px 12px 9px 10px;cursor:pointer;display:flex;align-items:flex-start;gap:9px;
+  transition:all .12s;
+}
+.task-multi-card:active{transform:scale(.99)}
+.task-multi-card.selected{
+  border-color:var(--navy);background:#eef3f7;
+  box-shadow:0 0 0 2px rgba(23,63,124,.12);
+}
+.task-multi-card.selected .tm-name{color:var(--navy)}
+.task-multi-card .tm-check{
+  flex-shrink:0;width:22px;height:22px;border-radius:6px;border:2px solid var(--line);
+  background:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:14px;color:transparent;font-weight:800;margin-top:1px;
+}
+.task-multi-card.selected .tm-check{
+  background:var(--navy);border-color:var(--navy);color:#fff;
+}
+.task-multi-card .tm-body{flex:1;min-width:0}
+.task-multi-card .tm-name{font-weight:600;font-size:14px;color:var(--text);line-height:1.3}
+.task-multi-card .tm-desc{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.task-multi-card .tm-min{
+  flex-shrink:0;background:#fff5d4;color:var(--navy);font-weight:800;font-size:12px;
+  padding:3px 9px;border-radius:99px;align-self:flex-start;margin-top:1px;
+}
+.task-multi-card.addon .tm-min{background:#e6f4ea;color:#1c5f37}
+.task-multi-card .tm-flag{
+  display:inline-block;background:var(--green-soft);color:#1c5f37;
+  padding:0 6px;border-radius:4px;font-size:10px;font-weight:700;margin-right:4px;
+}
+.task-multi-card.custom{ border-style:dashed; }
+.task-multi-card.custom .tm-name::before{ content:"+ "; color:var(--orange); }
+
+.custom-task-row{
+  background:#fff;border:1.5px dashed var(--orange);border-radius:10px;padding:9px 11px;
+  display:flex;align-items:center;gap:8px;
+}
+.custom-task-row .ctr-body{flex:1;min-width:0}
+.custom-task-row .ctr-name{font-weight:700;color:var(--navy);font-size:13px}
+.custom-task-row .ctr-meta{font-size:11px;color:var(--muted)}
+
+/* selection mini-summary (sticky at bottom of preview card) */
+.bundle-summary{
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;
+  border-radius:12px;padding:11px 14px;margin-top:10px;
+}
+.bundle-summary .row1{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.bundle-summary .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
+.bundle-summary .val{font-size:22px;font-weight:800;color:var(--yellow);line-height:1.1}
+.bundle-summary .ref{font-size:13px;opacity:.9;margin-top:6px}
+.bundle-summary .list{
+  margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.18);
+  font-size:12px;line-height:1.7;
+}
+.bundle-summary .list .li{
+  background:none;border:none;color:#fff;padding:1px 0;display:flex;justify-content:space-between;margin:0;
+}
+
+/* mode switch (single / bundle) */
+.assign-mode{
+  display:flex;background:var(--card-alt);border-radius:10px;padding:3px;gap:3px;
+  margin-bottom:10px;
+}
+.assign-mode button{
+  flex:1;background:none;border:none;padding:9px 6px;font-size:13px;
+  font-weight:700;border-radius:8px;cursor:pointer;color:var(--muted);
+  font-family:inherit;
+}
+.assign-mode button.active{background:#fff;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.assign-mode button .ic{font-size:14px;margin-left:4px}
+
+/* expand/collapse trigger inside cards */
+.bundle-toggle{
+  background:none;border:none;color:var(--navy);font-weight:700;font-size:12px;
+  padding:4px 8px;cursor:pointer;border-radius:6px;font-family:inherit;
+}
+.bundle-toggle:hover{background:var(--card-alt)}
+.bundle-tasks-list{
+  margin-top:6px;padding:6px 8px;background:var(--card-alt);border-radius:8px;
+  font-size:12px;
+}
+.bundle-tasks-list .bt-row{
+  display:flex;justify-content:space-between;align-items:center;gap:6px;
+  padding:3px 0;border-bottom:1px dashed var(--line);
+}
+.bundle-tasks-list .bt-row:last-child{border-bottom:none}
+.bundle-tasks-list .bt-name{flex:1;min-width:0;color:var(--text);font-weight:500}
+.bundle-tasks-list .bt-min{color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+
+/* per-task quality rows inside stop modal */
+.per-task-quality{
+  background:var(--card-alt);border-radius:8px;padding:8px;margin-top:6px;
+}
+.per-task-quality .ptq-row{
+  display:flex;align-items:center;gap:6px;margin-bottom:6px;padding:6px;
+  background:#fff;border-radius:6px;
+}
+.per-task-quality .ptq-row:last-child{margin-bottom:0}
+.per-task-quality .ptq-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--navy)}
+.per-task-quality .ptq-seg{display:flex;gap:2px;background:var(--card-alt);padding:2px;border-radius:6px}
+.per-task-quality .ptq-seg button{
+  background:none;border:none;padding:4px 8px;font-size:11px;font-weight:600;
+  border-radius:4px;cursor:pointer;color:var(--muted);font-family:inherit;
+}
+.per-task-quality .ptq-seg button.active{background:#fff;color:var(--navy)}
+.per-task-quality .ptq-seg button[data-v="Needs correction"].active{color:#7a5a00}
+.per-task-quality .ptq-seg button[data-v="Rejected"].active{color:var(--red)}
+
+/* bundle parent card in summary */
+.bundle-summary-card{
+  background:#fff;border:1.5px solid var(--navy);border-radius:12px;
+  padding:0;margin-bottom:10px;overflow:hidden;
+}
+.bundle-summary-card .bsc-head{
+  background:linear-gradient(135deg,var(--navy),var(--navy-2));color:#fff;
+  padding:10px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;
+}
+.bundle-summary-card .bsc-head .bsc-title{font-weight:800;font-size:14px}
+.bundle-summary-card .bsc-head .bsc-meta{font-size:11px;opacity:.9;margin-top:2px}
+.bundle-summary-card .bsc-body{padding:10px 14px}
+.bundle-summary-card .bsc-stats{
+  display:flex;gap:10px;flex-wrap:wrap;font-size:12px;margin-bottom:6px;
+}
+.bundle-summary-card .bsc-stats span b{color:var(--navy)}
+.bundle-summary-card .bsc-children{
+  margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);
+}
+.bundle-summary-card .bsc-child-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:4px 6px;font-size:12px;color:var(--text);
+  border-radius:4px;
+}
+.bundle-summary-card .bsc-child-row:nth-child(odd){background:#f8fafc}
+.bundle-summary-card .bsc-child-row .bcr-name{flex:1;min-width:0;font-weight:600;color:var(--navy)}
+.bundle-summary-card .bsc-child-row .bcr-nums{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* ---------- modal ---------- */
+.modal-back{
+  display:none;position:fixed;inset:0;background:rgba(15,41,82,.55);
+  z-index:200;align-items:flex-end;justify-content:center;padding:0;
+}
+.modal-back.open{display:flex}
+.modal{
+  background:#fff;width:100%;max-width:640px;border-radius:18px 18px 0 0;
+  padding:18px 16px 24px;max-height:92vh;overflow-y:auto;
+  animation:slideUp .25s ease;
+}
+@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal h3{margin:0 0 10px;color:var(--navy);font-size:17px}
+.modal .grab{width:40px;height:4px;background:var(--line);border-radius:2px;margin:0 auto 12px}
+
+/* ---------- summary blocks ---------- */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.kpi{background:var(--card-alt);border-radius:10px;padding:10px;text-align:center}
+.kpi .v{font-size:20px;font-weight:800;color:var(--navy);line-height:1.1}
+.kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:3px}
+.kpi.green .v{color:var(--green)}
+.kpi.red .v{color:var(--red)}
+.kpi.yellow .v{color:#a07700}
+
+/* ---------- worker summary block ---------- */
+.ws-block{
+  background:#fff;border-radius:12px;border:1px solid var(--line);
+  padding:12px;margin-bottom:10px;
+}
+.ws-block h4{margin:0 0 8px;color:var(--navy);font-size:15px;
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ws-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;text-align:center}
+.ws-mini > div{background:var(--card-alt);padding:6px 4px;border-radius:8px}
+.ws-mini > div b{display:block;font-size:14px;color:var(--navy)}
+
+/* ---------- list items (settings) ---------- */
+.li{
+  display:flex;align-items:center;gap:8px;padding:10px;background:#fff;
+  border:1px solid var(--line);border-radius:10px;margin-bottom:6px;
+}
+.li .grow{flex:1;min-width:0}
+.li .grow .t{font-weight:600;color:var(--navy);font-size:14px}
+.li .grow .s{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* ---------- collapsible ---------- */
+.coll{border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:10px;overflow:hidden}
+.coll-head{
+  background:var(--card-alt);padding:11px 14px;display:flex;justify-content:space-between;
+  align-items:center;cursor:pointer;font-weight:700;color:var(--navy);
+}
+.coll-head .arrow{transition:transform .2s}
+.coll.open .coll-head .arrow{transform:rotate(90deg)}
+.coll-body{display:none;padding:12px;border-top:1px solid var(--line)}
+.coll.open .coll-body{display:block}
+
+/* ---------- empty states ---------- */
+.empty{
+  text-align:center;padding:30px 20px;color:var(--muted);
+  background:var(--card-alt);border-radius:var(--radius);border:2px dashed var(--line);
+}
+.empty .ic{font-size:32px;margin-bottom:6px;display:block}
+
+/* ---------- toast ---------- */
+.toast{
+  position:fixed;left:50%;bottom:90px;transform:translateX(-50%);
+  background:var(--navy);color:#fff;padding:10px 16px;border-radius:8px;
+  font-size:13px;font-weight:600;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,.25);
+  opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.toast.show{opacity:1}
+.toast.green{background:var(--green)}
+.toast.red{background:var(--red)}
+
+/* ---------- PIN ---------- */
+.pin-overlay{
+  position:fixed;inset:0;background:linear-gradient(135deg,var(--navy),var(--navy-2));
+  z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#fff;padding:20px;
+}
+.pin-overlay h2{font-size:20px;margin:0 0 4px}
+.pin-overlay p{font-size:13px;opacity:.85;margin:0 0 20px}
+.pin-overlay input{
+  width:200px;text-align:center;font-size:24px;letter-spacing:8px;padding:14px;
+  background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);color:#fff;
+  border-radius:10px;margin-bottom:14px;
+}
+
+/* ---------- header band like the PDF guide ---------- */
+.guide-band{
+  background:var(--blue-pill);color:#fff;border-radius:99px;
+  padding:8px 18px;font-weight:700;font-size:14px;display:inline-block;margin-bottom:8px;
+}
+.time-pill{background:var(--yellow);color:var(--navy);padding:4px 12px;border-radius:99px;font-weight:800;font-size:13px}
+
+/* ---------- print styles for fallback ---------- */
+@media print{
+  .appbar,.bnav,.btn-row,.no-print{display:none !important}
+  body{background:#fff;padding:0}
+  .view{display:block !important;padding:0}
+  .card{box-shadow:none;border:1px solid #ccc;page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<!-- ============== PIN OVERLAY ============== -->
+<div class="pin-overlay" id="pinOverlay" style="display:none">
+  <div style="font-size:42px;margin-bottom:6px">🔒</div>
+  <h2>3LUX Live Work Control</h2>
+  <p>Enter PIN to continue</p>
+  <input type="password" id="pinInput" inputmode="numeric" maxlength="6" placeholder="••••" />
+  <button class="btn warn" style="width:200px" onclick="checkPin()">Unlock</button>
+  <p style="margin-top:14px;font-size:11px;opacity:.7;max-width:280px;text-align:center">
+    Note: This is local protection against accidental access only — not real security.
+  </p>
+</div>
+
+<!-- ============== APP BAR ============== -->
+<header class="appbar">
+  <div class="logo">3<span>L</span></div>
+  <div class="titles">
+    <h1>3LUX Live Work Control</h1>
+    <div class="sub">Tidskontroll • Kvalitet • Produktivitet • Avvikelsehantering</div>
+  </div>
+  <div class="ab-actions">
+    <button class="icon" onclick="showQuickStats()" title="Quick stats">📊</button>
+  </div>
+</header>
+
+<!-- ============== VIEW: JOB ============== -->
+<section class="view active" id="view-job">
+  <div class="card-head">
+    <span>📋 Job Setup</span>
+    <span id="jobStatusChip" class="chip navy">Not started</span>
+  </div>
+  <div class="card-body">
+    <div class="row cols-2">
+      <div>
+        <label>Bokning ID</label>
+        <input type="text" id="f-bookingId" placeholder="BK-2026-0001" />
+      </div>
+      <div>
+        <label>Datum</label>
+        <input type="date" id="f-date" />
+      </div>
+    </div>
+
+    <label>Service</label>
+    <select id="f-service"></select>
+
+    <div class="row cols-2">
+      <div>
+        <label>Planned start</label>
+        <input type="time" id="f-plannedStart" />
+      </div>
+      <div>
+        <label>Planned end</label>
+        <input type="time" id="f-plannedEnd" />
+      </div>
+    </div>
+
+    <label>General dirt level (whole job)</label>
+    <select id="f-generalDirt"></select>
+
+    <label>Customer / property notes</label>
+    <textarea id="f-jobNotes" placeholder="Address, access notes, customer remarks..."></textarea>
+  </div>
+
+  <div class="section-title">👥 Team</div>
+
+  <div class="card">
+    <div class="row cols-2">
+      <input type="text" id="newWorkerName" placeholder="Worker name" />
+      <select id="newWorkerRole">
+        <option value="Leader">Leader</option>
+        <option value="Worker" selected>Worker</option>
+        <option value="Trainee">Trainee</option>
+        <option value="Driver">Driver</option>
+        <option value="Quality controller">Quality controller</option>
+      </select>
+    </div>
+    <div class="row cols-2" style="margin-top:8px">
+      <select id="newWorkerLevel">
+        <option value="New">New</option>
+        <option value="Under training">Under training</option>
+        <option value="Normal" selected>Normal</option>
+        <option value="Experienced">Experienced</option>
+      </select>
+      <button class="btn green" onclick="addWorkerToJob()">+ Add to job</button>
+    </div>
+    <div id="jobWorkersList" style="margin-top:10px"></div>
+
+    <label>Team leader / ansvarig</label>
+    <select id="f-leader"></select>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn green" id="btnStartJob" onclick="startJob()">▶ Start Job</button>
+    <button class="btn red" id="btnEndJob" onclick="endJob()" style="display:none">■ End Job & Archive</button>
+  </div>
+
+  <div id="jobLiveStatus" style="display:none">
+    <div class="section-title">Live status</div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="v" id="liveJobElapsed">0m</div><div class="l">Job elapsed</div></div>
+      <div class="kpi"><div class="v" id="liveJobActive">0</div><div class="l">Active tasks</div></div>
+      <div class="kpi"><div class="v" id="liveJobDone">0</div><div class="l">Completed</div></div>
+      <div class="kpi"><div class="v" id="liveJobPlanned">—</div><div class="l">Planned</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== VIEW: ASSIGN ============== -->
+<section class="view" id="view-assign">
+  <div class="section-title">⚡ Quick Assign</div>
+
+  <!-- Mode switch: bundle (multi) vs single -->
+  <div class="assign-mode">
+    <button data-mode="multi" class="active" onclick="setAssignMode('multi')">
+      <span class="ic">📦</span> Multiple tasks <span style="font-size:10px;opacity:.7">(bundle)</span>
+    </button>
+    <button data-mode="single" onclick="setAssignMode('single')">
+      <span class="ic">▪</span> Single task
+    </button>
+  </div>
+
+  <div class="card">
+    <label>1. Worker</label>
+    <div class="pick-grid" id="assign-workers"></div>
+  </div>
+
+  <div class="card">
+    <label>2. Area / Section</label>
+    <div class="pick-grid" id="assign-sections"></div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn alt sm" onclick="addRoom()">+ Add Room</button>
+      <button class="btn alt sm" onclick="addCustomArea()">+ Custom area</button>
+    </div>
+  </div>
+
+  <!-- Multi-task selector (bundle mode) -->
+  <div class="card" id="multi-task-card">
+    <label>3. Select tasks <span style="font-size:11px;color:var(--muted);text-transform:none;font-weight:500">— tap to toggle, choose as many as you want</span></label>
+    <div class="task-multi-head" id="multi-head" style="display:none">
+      <div>
+        <div class="selcount" id="multi-count">0 selected</div>
+        <div class="selsum" id="multi-sum">Ref: — · Adj: —</div>
+      </div>
+      <div class="actions">
+        <button class="btn alt xs" onclick="multiSelectAll()">All</button>
+        <button class="btn alt xs" onclick="multiClear()">Clear</button>
+      </div>
+    </div>
+    <div class="task-multi-list" id="assign-multi-list"></div>
+    <div style="margin-top:8px">
+      <button class="btn ghost sm" onclick="openAddCustomTaskModal()">+ Add custom task</button>
+    </div>
+  </div>
+
+  <!-- Single-task selector (legacy mode) -->
+  <div class="card" id="single-task-card" style="display:none">
+    <label>3. Task</label>
+    <select id="assign-task" onchange="onAssignTaskChange()"></select>
+    <div id="customTaskBox" style="display:none;margin-top:8px;padding:10px;background:var(--card-alt);border-radius:10px">
+      <div class="row cols-2">
+        <input type="text" id="customTaskName" placeholder="Custom task name" />
+        <input type="number" id="customTaskMin" placeholder="Reference minutes" min="1" />
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;text-transform:none;font-size:13px">
+        <input type="checkbox" id="customTaskApplyDirt" style="width:auto" />
+        Apply dirt multiplier to this custom task
+      </label>
+      <input type="text" id="customTaskReason" placeholder="Reason / notes (optional)" style="margin-top:6px" />
+    </div>
+  </div>
+
+  <div class="card">
+    <label>4. Dirt level <span style="font-size:11px;color:var(--muted);text-transform:none;font-weight:500">(applies to all selected tasks in bundle)</span></label>
+    <div class="dirt-grid" id="assign-dirts"></div>
+  </div>
+
+  <div class="card tight" id="assign-preview" style="display:none">
+    <div style="font-size:13px;color:var(--muted)">Preview</div>
+    <div id="preview-body"></div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn green" onclick="startAssignment(false)" id="btn-start-main">▶ Start selected tasks</button>
+    <button class="btn alt" onclick="startAssignment(true)">▶ Start & Keep Worker</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn ghost sm" onclick="duplicateLast()">⧉ Duplicate last</button>
+    <button class="btn ghost sm" onclick="assignSameToOther()">↔ Same → other worker</button>
+  </div>
+</section>
+
+<!-- ============== VIEW: ACTIVE ============== -->
+<section class="view" id="view-active">
+  <div class="section-title">⏱ Active Tasks</div>
+  <div id="activeList"></div>
+  <div class="section-title">⚠ Deviations</div>
+  <button class="btn warn" onclick="openDeviationModal(null)">+ Add Deviation</button>
+  <div id="deviationList" style="margin-top:10px"></div>
+</section>
+
+<!-- ============== VIEW: SUMMARY ============== -->
+<section class="view" id="view-summary">
+  <div class="section-title">📑 Job Summary</div>
+  <div id="summaryContent"></div>
+  <div class="btn-row">
+    <button class="btn warn" onclick="exportPDF()">📄 Export PDF</button>
+    <button class="btn alt" onclick="window.print()">🖨 Print</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn ghost sm" onclick="exportJSON()">⬇ Backup JSON</button>
+    <button class="btn ghost sm" onclick="exportCSV()">⬇ CSV summary</button>
+  </div>
+</section>
+
+<!-- ============== VIEW: ANALYTICS ============== -->
+<section class="view" id="view-analytics">
+  <div class="section-title">📈 Analytics (across saved jobs)</div>
+  <div id="analyticsContent"></div>
+</section>
+
+<!-- ============== VIEW: SETTINGS ============== -->
+<section class="view" id="view-settings">
+  <div class="section-title">⚙ Settings</div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>🏢 Company</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <label>Company name</label>
+      <input type="text" id="set-company" />
+      <label>Logo text (small badge)</label>
+      <input type="text" id="set-logoText" />
+      <label>Default report title</label>
+      <input type="text" id="set-reportTitle" />
+      <label>Report footer</label>
+      <textarea id="set-reportFooter"></textarea>
+      <button class="btn green" style="margin-top:10px" onclick="saveCompany()">Save company info</button>
+    </div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>👥 Workers (master list)</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <div id="set-workers"></div>
+      <label>Add new worker</label>
+      <input type="text" id="set-newWorker" placeholder="Worker name" />
+      <button class="btn green sm" style="margin-top:6px" onclick="addMasterWorker()">+ Add</button>
+    </div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>🧹 Services & Checklist Builder</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <label>Choose service to edit</label>
+      <select id="set-serviceSelect" onchange="renderServiceEditor()"></select>
+      <div class="btn-row">
+        <input type="text" id="set-newServiceName" placeholder="New service name" />
+        <button class="btn green sm" onclick="addService()">+ Add service</button>
+      </div>
+      <div id="set-serviceEditor" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>💧 Dirt levels</span><span class="arrow">▶</span></div>
+    <div class="coll-body" id="set-dirtLevels"></div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>📏 Evaluation rules (%)</span><span class="arrow">▶</span></div>
+    <div class="coll-body" id="set-rules"></div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>🚧 Delay reasons</span><span class="arrow">▶</span></div>
+    <div class="coll-body" id="set-delays"></div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>🔒 PIN lock (optional)</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <label>Set PIN (leave empty to disable)</label>
+      <input type="text" id="set-pin" inputmode="numeric" maxlength="6" placeholder="4–6 digits" />
+      <button class="btn green sm" style="margin-top:6px" onclick="savePin()">Save PIN</button>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px">
+        This is local protection only. Anyone with browser/dev access can bypass it. Not real security.
+      </p>
+    </div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>📁 Data management</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <button class="btn alt" onclick="exportJSON()">⬇ Export ALL data (JSON)</button>
+      <label style="margin-top:10px">Import JSON (replaces all)</label>
+      <input type="file" id="importFile" accept=".json" onchange="importJSON(this)" />
+      <button class="btn warn" style="margin-top:10px" onclick="resetDemo()">↻ Reset to demo data</button>
+      <button class="btn red" style="margin-top:6px" onclick="clearAll()">🗑 Clear ALL local data</button>
+      <button class="btn alt" style="margin-top:6px" onclick="archiveCurrentJob()">📦 Archive current job</button>
+    </div>
+  </div>
+
+  <div class="coll">
+    <div class="coll-head" onclick="toggleColl(this)"><span>🔐 Privacy / employee notice</span><span class="arrow">▶</span></div>
+    <div class="coll-body">
+      <p style="font-size:13px;line-height:1.6">
+        <b>Internal notice:</b> This system is used for work planning, quality control,
+        productivity analysis, training, fair evaluation and documentation of deviations.
+      </p>
+      <ul style="font-size:13px;line-height:1.7;padding-left:18px;color:var(--text)">
+        <li>This tool must NOT be used as hidden surveillance.</li>
+        <li>Employees must be informed that task time and quality are recorded.</li>
+        <li>Do not collect unnecessary personal data.</li>
+        <li>No GPS, audio or video is stored by this app.</li>
+        <li>Use professional, neutral documentation language at all times.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============== BOTTOM NAV ============== -->
+<nav class="bnav">
+  <button data-view="job" onclick="switchView('job')"><span class="ic">📋</span>Job</button>
+  <button data-view="assign" onclick="switchView('assign')"><span class="ic">⚡</span>Assign</button>
+  <button data-view="active" onclick="switchView('active')"><span class="ic">⏱</span>Active</button>
+  <button data-view="summary" onclick="switchView('summary')"><span class="ic">📑</span>Summary</button>
+  <button data-view="analytics" onclick="switchView('analytics')"><span class="ic">📈</span>Analytics</button>
+  <button data-view="settings" onclick="switchView('settings')"><span class="ic">⚙</span>Settings</button>
+</nav>
+
+<!-- ============== MODALS ============== -->
+<div class="modal-back" id="modalBack" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   3LUX LIVE WORK CONTROL — Application Logic
+   ---------------------------------------------------------------------
+   All data is held in `appState`, persisted to localStorage on every change.
+   No backend, no tracking, no GPS/audio/video.
+   ===================================================================== */
+
+/* ---------- DEFAULT DATA (seeded from 3LUX Snabbguide v1.0) ---------- */
+
+const DEFAULT_DIRT_LEVELS = [
+  {id:'d1', name:'Nearly clean',     swedish:'Nästan rent',         multiplier:0.80, severity:1},
+  {id:'d2', name:'Light dirt',       swedish:'Lätt smutsigt',       multiplier:0.90, severity:2},
+  {id:'d3', name:'Normal',           swedish:'Normal nivå',         multiplier:1.00, severity:3},
+  {id:'d4', name:'Above normal',     swedish:'Över normal',         multiplier:1.10, severity:4},
+  {id:'d5', name:'Clearly dirty',    swedish:'Tydligt smutsigt',    multiplier:1.20, severity:5},
+  {id:'d6', name:'Heavy dirt',       swedish:'Kraftigt smutsigt',   multiplier:1.40, severity:6},
+  {id:'d7', name:'Very dirty',       swedish:'Mycket smutsigt',     multiplier:1.60, severity:7},
+  {id:'d8', name:'Extremely dirty',  swedish:'Extremt smutsigt',    multiplier:1.80, severity:8},
+  {id:'d9', name:'Double time',      swedish:'Dubbel tidsnivå',     multiplier:2.00, severity:9},
+  {id:'d10',name:'Critical level',   swedish:'Kritisk nivå',        multiplier:2.50, severity:10},
+  {id:'d11',name:'Catastrophic',     swedish:'Katastrofal nivå',    multiplier:3.00, severity:11},
+];
+
+const DEFAULT_DELAY_REASONS = [
+  'Higher dirtiness than expected',
+  'Obstacles / furniture / difficult access',
+  'Missing tools or material',
+  'Waiting for leader / customer',
+  'Rework because of quality',
+  'Worker is under training',
+  'Wrong task priority',
+  'Over-cleaning',
+  'Customer / property condition',
+  'Other'
+];
+
+const DEFAULT_RULES = {
+  veryFastMax: 85,    // < 85% = very fast
+  excellentMax:100,   // 85–100 = excellent
+  acceptableMax:115,  // 101–115 = acceptable
+  slowMax:130,        // 116–130 = slow
+  delayMax:160,       // 131–160 = clear delay
+  // > delayMax = needs review
+  delayReasonRequiredAt:115  // require reason above this %
+};
+
+/* Default Flyttstädning checklist — derived from the 3LUX Snabbguide */
+const DEFAULT_FLYTTSTADNING = {
+  id:'svc-flytt',
+  name:'Flyttstädning',
+  sections:[
+    {id:'sec-allm', name:'Allmänna ytor / General areas', tasks:[
+      {id:'t-dam',   name:'Dammning',                    minutes:16, addon:false, desc:'Tak, väggar, lister, fönsterkarmar, element, golv'},
+      {id:'t-avt',   name:'Avtorkning',                  minutes:13, addon:false, desc:'Fönsterglas, lister, element, dörrar, golv (mopp)'},
+      {id:'t-gard',  name:'Garderob / Skåp',             minutes:6,  addon:true,  desc:'Hyllor, dörr, ovansida, sidor'},
+      {id:'t-hall',  name:'Hall',                        minutes:10, addon:true,  desc:'Inkl. ytterdörr'},
+      {id:'t-trapp', name:'Trappa',                      minutes:10, addon:true},
+      {id:'t-balk',  name:'Vanlig balkong',              minutes:8,  addon:true,  desc:'Inkl. balkongdörr och glas'},
+      {id:'t-forr',  name:'Förråd / Källare / Garage',   minutes:8,  addon:true},
+      {id:'t-uter',  name:'Uterum',                      minutes:10, addon:true},
+      {id:'t-ibal',  name:'Inglasad balkong',            minutes:8,  addon:true},
+      {id:'t-fon1',  name:'Fönster — 1 glasdel',         minutes:5,  addon:true,  desc:'Båda sidor'},
+      {id:'t-fon2',  name:'Fönster — 2 glasdelar',       minutes:9,  addon:true,  desc:'Båda sidor'},
+      {id:'t-fon4',  name:'Fönster — 4 glasdelar',       minutes:16, addon:true,  desc:'Båda sidor'},
+      {id:'t-fon8',  name:'Fönster — 8 glasdelar',       minutes:24, addon:true,  desc:'Båda sidor'},
+    ]},
+    {id:'sec-kok', name:'Kök / Kitchen', tasks:[
+      {id:'t-k-dam',  name:'Dammning – förbered',                minutes:22, desc:'Tak, väggar, skåp, belysning, fönster/element, dammsug golv'},
+      {id:'t-k-skap', name:'Skåp & fronter – avtorkning',         minutes:65, desc:'Övre/undre hyllor, luckor, undersida överskåp, lådor, under diskho'},
+      {id:'t-k-kyl',  name:'Kyl & frys – rengöring',              minutes:56, desc:'Lösa delar, insida, utsida, gummilister'},
+      {id:'t-k-flak', name:'Fläkt – rengöring',                   minutes:28, desc:'Filter, insida, svart del, utsida, kåpa/lock'},
+      {id:'t-k-spis', name:'Spis + ugn + bakom spisen',           minutes:92, desc:'Skrapning, innehåll, lucka & glas, häll/vred, bakom, låda'},
+      {id:'t-k-disk', name:'Diskmaskin – rengöring',              minutes:12, desc:'Filter, kanter/lister, utsida'},
+      {id:'t-k-kak',  name:'Kakel/keramik & diskhoar',            minutes:12, desc:'Kakel, diskho(ar), kran, kalk vid behov'},
+      {id:'t-k-elf',  name:'Element & fönster (vått)',            minutes:8},
+      {id:'t-k-sock', name:'Sockel under underskåp',              minutes:5},
+      {id:'t-k-over', name:'Ovanpå överskåp',                     minutes:10, addon:true},
+      {id:'t-k-mik',  name:'Mikrovågsugn',                        minutes:10, addon:true},
+    ]},
+    {id:'sec-bad', name:'Badrum / Bathroom', tasks:[
+      {id:'t-b-grov', name:'Grovrengöring & avkalkning',          minutes:35, desc:'Kakel/keramik, blandare, golv, dammning, dammsug'},
+      {id:'t-b-avt',  name:'Avtorkning',                          minutes:33, desc:'Tak, fläkt, belysning, kakel, skåp/spegel, tvättställ, element, elknapp'},
+      {id:'t-b-det',  name:'Rengöring detalj',                    minutes:20, desc:'Toalett (in/ut), fläckar på kakel, golvbrunn'},
+      {id:'t-b-fin',  name:'Finish / Polering',                   minutes:12, desc:'Spegel, tvättställ + blandare, duschblandare, dörr, golv'},
+      {id:'t-b-bad',  name:'Badkar',                              minutes:20, addon:true},
+      {id:'t-b-dush', name:'Duschvägg i glas',                    minutes:20, addon:true},
+      {id:'t-b-fon',  name:'Fönster',                             minutes:10, addon:true},
+      {id:'t-b-tvm',  name:'Tvättmaskin',                         minutes:15, addon:true},
+      {id:'t-b-tor',  name:'Torktumlare',                         minutes:15, addon:true},
+    ]},
+  ]
+};
+
+const DEFAULT_STATE = () => ({
+  settings:{
+    company:'3LUX Trelux',
+    logoText:'3L',
+    reportTitle:'Arbetsrapport – tidskontroll och kvalitetsuppföljning',
+    reportFooter:'Rapporten är avsedd för intern uppföljning av tid, kvalitet, planering, utbildning och avvikelsehantering.',
+    pin:''
+  },
+  workers:[
+    {id:'w1',name:'Mohammad', role:'Worker',  level:'Experienced', skills:['Kitchen','Bathroom','Heavy dirt'], active:true},
+    {id:'w2',name:'Ahmad',    role:'Worker',  level:'Normal',      skills:['Rooms','Windows','Finish'], active:true},
+    {id:'w3',name:'Layla',    role:'Worker',  level:'Normal',      skills:['Bathroom','Detail cleaning'], active:true},
+    {id:'w4',name:'Nour',     role:'Trainee', level:'Under training', skills:['Rooms'], active:true},
+  ],
+  services:[ DEFAULT_FLYTTSTADNING ],
+  dirtLevels: DEFAULT_DIRT_LEVELS.slice(),
+  evaluationRules: {...DEFAULT_RULES},
+  delayReasons: DEFAULT_DELAY_REASONS.slice(),
+  currentJob: null,
+  savedJobs: [],
+  ui:{ lastAssignment:null, lastWorkerId:null }
+});
+
+/* ---------- STATE & PERSISTENCE ---------- */
+
+let appState = null;
+const STORE_KEY = '3lux_lwc_v1';
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(raw){
+      appState = JSON.parse(raw);
+      // backfill missing keys (defensive)
+      const def = DEFAULT_STATE();
+      for(const k of Object.keys(def)) if(!(k in appState)) appState[k]=def[k];
+      if(!appState.ui) appState.ui = {lastAssignment:null,lastWorkerId:null};
+      // backfill bundle storage on existing jobs (backward compatibility)
+      if(appState.currentJob && !appState.currentJob.completedBundles){
+        appState.currentJob.completedBundles = [];
+      }
+      (appState.savedJobs||[]).forEach(j=>{ if(!j.completedBundles) j.completedBundles=[]; });
+    } else {
+      appState = DEFAULT_STATE();
+    }
+  }catch(e){
+    console.error('Load failed, resetting:', e);
+    appState = DEFAULT_STATE();
+  }
+}
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(appState)); }
+  catch(e){ console.error('Save failed:', e); toast('Save failed: storage full?', 'red'); }
+}
+
+/* ---------- UTILITIES ---------- */
+
+function uid(p='x'){ return p+'-'+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-3); }
+function fmtMin(m){ if(m==null||isNaN(m)) return '—'; return (Math.round(m*10)/10)+' min'; }
+function fmtHM(min){
+  if(min==null||isNaN(min)) return '—';
+  const h=Math.floor(min/60), m=Math.round(min%60);
+  return (h>0?h+'h ':'')+m+'m';
+}
+function fmtTimerMs(ms){
+  const total = Math.max(0, Math.floor(ms/1000));
+  const h=Math.floor(total/3600), m=Math.floor((total%3600)/60), s=total%60;
+  const pad = n => String(n).padStart(2,'0');
+  return (h>0?h+':':'')+pad(m)+':'+pad(s);
+}
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function nowTime(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+
+function toast(msg, type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show '+(type||'');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ t.className='toast '+(type||''); }, 2000);
+}
+
+/* ---------- CORE CALCULATIONS ---------- */
+
+function calcAdjusted(refMin, multiplier){
+  if(!refMin || isNaN(refMin)) return 0;
+  if(!multiplier || isNaN(multiplier)) multiplier = 1;
+  return refMin * multiplier;
+}
+function calcActualMinutes(startMs, endMs, pausedMs){
+  if(!startMs||!endMs) return 0;
+  const total = endMs - startMs - (pausedMs||0);
+  return Math.max(0, total/60000);
+}
+function calcPerfRatio(actual, adjusted){
+  if(!adjusted || adjusted===0) return null; // avoid div/0
+  return actual / adjusted;
+}
+function getEvaluationLabel(ratioPct, quality){
+  // Quality overrides: rejected/correction never "excellent"
+  const r = ratioPct;
+  const rules = appState.evaluationRules;
+  if(quality === 'Rejected')        return {label:'Rejected (kvalitet)', cls:'red'};
+  if(quality === 'Needs correction')return {label:'Needs correction',     cls:'yellow'};
+  if(r==null) return {label:'No reference', cls:'blue'};
+  if(r < rules.veryFastMax)         return {label:'Very fast',            cls:'blue'};
+  if(r <= rules.excellentMax)       return {label:'Excellent / on time', cls:'green'};
+  if(r <= rules.acceptableMax)      return {label:'Acceptable',          cls:'yellow'};
+  if(r <= rules.slowMax)            return {label:'Slow',                cls:'yellow'};
+  if(r <= rules.delayMax)           return {label:'Clear delay',         cls:'red'};
+  return {label:'Needs review',     cls:'red'};
+}
+function qualityScore(q){
+  return q==='Approved'?100 : q==='Needs correction'?60 : q==='Rejected'?20 : 0;
+}
+
+/* Worker score blends time(40%), quality(35%), rework(15%), discipline(10%) */
+function workerScore(tasks){
+  if(!tasks.length) return null;
+  let timeScores=[], qScores=[], rework=0, discipline=0;
+  tasks.forEach(t=>{
+    if(t.adjustedMinutes>0){
+      const r = (t.actualMinutes/t.adjustedMinutes)*100;
+      // time score: 100 at 100%, decreases above, slight bonus below
+      let s;
+      if(r<=85) s=100;
+      else if(r<=100) s=100-(r-85)*0.5;
+      else if(r<=115) s=92-(r-100)*1.5;
+      else if(r<=130) s=70-(r-115)*1.5;
+      else if(r<=160) s=Math.max(40,50-(r-130)*0.5);
+      else s=20;
+      timeScores.push(s);
+    }
+    qScores.push(qualityScore(t.quality||'Approved'));
+    if(t.reworkOfTaskId) rework++;
+    if(!t.notes && !t.delayReason) discipline += 10; // simple proxy
+  });
+  const avg = a => a.length? a.reduce((x,y)=>x+y,0)/a.length : 0;
+  const reworkPenalty = Math.min(40, rework*15);
+  return Math.round(
+    avg(timeScores)*0.40 +
+    avg(qScores)*0.35 +
+    Math.max(0,100-reworkPenalty)*0.15 +
+    Math.min(100, (discipline/tasks.length))*0.10
+  );
+}
+
+/* ---------- VIEW SWITCHING ---------- */
+
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  document.querySelectorAll('.bnav button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view===name);
+  });
+  // Refresh dynamic content when switching in
+  if(name==='assign')    renderAssign();
+  if(name==='active')    renderActive();
+  if(name==='summary')   renderSummary();
+  if(name==='analytics') renderAnalytics();
+  if(name==='settings')  renderSettings();
+  if(name==='job')       renderJob();
+}
+
+/* ====================================================================
+   JOB VIEW
+   ==================================================================== */
+
+function renderJob(){
+  const cj = appState.currentJob;
+  // Service dropdown
+  const svcSel = document.getElementById('f-service');
+  svcSel.innerHTML = appState.services.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  // Dirt dropdown
+  const dirtSel = document.getElementById('f-generalDirt');
+  dirtSel.innerHTML = appState.dirtLevels.map(d=>
+    `<option value="${d.id}">${escapeHtml(d.name)} / ${escapeHtml(d.swedish)} (×${d.multiplier})</option>`
+  ).join('');
+
+  // Defaults / current values
+  if(!cj){
+    if(!document.getElementById('f-date').value) document.getElementById('f-date').value = todayISO();
+    if(!document.getElementById('f-bookingId').value) document.getElementById('f-bookingId').value = 'BK-'+new Date().getFullYear()+'-'+Math.floor(Math.random()*9000+1000);
+    document.getElementById('jobStatusChip').textContent='Not started';
+    document.getElementById('jobStatusChip').className='chip navy';
+    document.getElementById('btnStartJob').style.display='';
+    document.getElementById('btnEndJob').style.display='none';
+    document.getElementById('jobLiveStatus').style.display='none';
+    // workers list
+    renderJobWorkers([]);
+    refreshLeaderSelect([]);
+  } else {
+    document.getElementById('f-bookingId').value=cj.bookingId||'';
+    document.getElementById('f-date').value=cj.date||todayISO();
+    document.getElementById('f-service').value=cj.serviceId||appState.services[0].id;
+    document.getElementById('f-plannedStart').value=cj.plannedStart||'';
+    document.getElementById('f-plannedEnd').value=cj.plannedEnd||'';
+    document.getElementById('f-generalDirt').value=cj.generalDirtLevelId||appState.dirtLevels[2].id;
+    document.getElementById('f-jobNotes').value=cj.jobNotes||'';
+    document.getElementById('jobStatusChip').textContent='Active';
+    document.getElementById('jobStatusChip').className='chip green';
+    document.getElementById('btnStartJob').style.display='none';
+    document.getElementById('btnEndJob').style.display='';
+    document.getElementById('jobLiveStatus').style.display='';
+    renderJobWorkers(cj.workers);
+    refreshLeaderSelect(cj.workers, cj.leaderId);
+    updateLiveJobStatus();
+  }
+}
+
+function renderJobWorkers(workers){
+  const wrap=document.getElementById('jobWorkersList');
+  if(!workers.length){ wrap.innerHTML='<div class="empty" style="padding:14px"><span class="ic">👥</span>No workers added yet</div>'; return; }
+  wrap.innerHTML = workers.map(w=>`
+    <div class="li">
+      <div class="grow">
+        <div class="t">${escapeHtml(w.name)}</div>
+        <div class="s">${escapeHtml(w.role)} · ${escapeHtml(w.level)}</div>
+      </div>
+      <button class="btn xs alt" onclick="removeJobWorker('${w.id}')">✕</button>
+    </div>
+  `).join('');
+}
+function refreshLeaderSelect(workers, selectedId){
+  const sel=document.getElementById('f-leader');
+  sel.innerHTML = '<option value="">— Select leader —</option>'+
+    workers.map(w=>`<option value="${w.id}" ${selectedId===w.id?'selected':''}>${escapeHtml(w.name)}</option>`).join('');
+}
+
+function addWorkerToJob(){
+  const name=document.getElementById('newWorkerName').value.trim();
+  const role=document.getElementById('newWorkerRole').value;
+  const level=document.getElementById('newWorkerLevel').value;
+  if(!name){ toast('Enter a name','red'); return; }
+
+  // ensure currentJob exists as a draft
+  if(!appState.currentJob){
+    appState.currentJob = createJobDraft();
+  }
+  const w = {id:uid('w'), name, role, level, skills:[], active:true};
+  appState.currentJob.workers.push(w);
+
+  // also add to master list if not present
+  if(!appState.workers.find(x=>x.name.toLowerCase()===name.toLowerCase())){
+    appState.workers.push({...w, id:uid('w')});
+  }
+
+  document.getElementById('newWorkerName').value='';
+  save(); renderJob();
+}
+function removeJobWorker(id){
+  if(!appState.currentJob) return;
+  appState.currentJob.workers = appState.currentJob.workers.filter(w=>w.id!==id);
+  if(appState.currentJob.leaderId===id) appState.currentJob.leaderId=null;
+  save(); renderJob();
+}
+
+function createJobDraft(){
+  return {
+    id: uid('job'),
+    bookingId: document.getElementById('f-bookingId').value || ('BK-'+Date.now()),
+    date: document.getElementById('f-date').value || todayISO(),
+    serviceId: document.getElementById('f-service').value,
+    serviceName: appState.services.find(s=>s.id===document.getElementById('f-service').value)?.name||'',
+    plannedStart: document.getElementById('f-plannedStart').value,
+    plannedEnd: document.getElementById('f-plannedEnd').value,
+    generalDirtLevelId: document.getElementById('f-generalDirt').value || appState.dirtLevels[2].id,
+    jobNotes: document.getElementById('f-jobNotes').value,
+    leaderId: null,
+    leaderName: '',
+    workers: [],
+    activeTasks: [],
+    completedTasks: [],
+    completedBundles: [],   // bundle parents (display/traceability only — totals come from completedTasks children)
+    deviations: [],
+    customAreas: [],   // user-added rooms / custom sections
+    startedAt: null,
+    endedAt: null,
+    status: 'draft'
+  };
+}
+
+function startJob(){
+  // commit draft -> active
+  if(!appState.currentJob) appState.currentJob = createJobDraft();
+  const cj = appState.currentJob;
+
+  // pull form values
+  cj.bookingId = document.getElementById('f-bookingId').value || cj.bookingId;
+  cj.date = document.getElementById('f-date').value || cj.date;
+  cj.serviceId = document.getElementById('f-service').value;
+  cj.serviceName = appState.services.find(s=>s.id===cj.serviceId)?.name||'';
+  cj.plannedStart = document.getElementById('f-plannedStart').value;
+  cj.plannedEnd = document.getElementById('f-plannedEnd').value;
+  cj.generalDirtLevelId = document.getElementById('f-generalDirt').value;
+  cj.jobNotes = document.getElementById('f-jobNotes').value;
+  cj.leaderId = document.getElementById('f-leader').value;
+  cj.leaderName = cj.workers.find(w=>w.id===cj.leaderId)?.name||'';
+
+  if(!cj.workers.length){ toast('Add at least one worker','red'); return; }
+  if(!cj.leaderId){ toast('Select a team leader','red'); return; }
+
+  cj.startedAt = Date.now();
+  cj.status = 'active';
+  save();
+  renderJob();
+  toast('Job started','green');
+  switchView('assign');
+}
+
+function endJob(){
+  const cj = appState.currentJob;
+  if(!cj) return;
+  if(cj.activeTasks.length){
+    if(!confirm('There are still active tasks. End job anyway? Active tasks will be discarded.')) return;
+    cj.activeTasks = [];
+  }
+  if(!confirm('End and archive this job?')) return;
+  cj.endedAt = Date.now();
+  cj.status = 'completed';
+  appState.savedJobs.push(JSON.parse(JSON.stringify(cj)));
+  appState.currentJob = null;
+  save();
+  toast('Job archived','green');
+  renderJob();
+  switchView('summary');
+}
+
+function archiveCurrentJob(){
+  if(!appState.currentJob){ toast('No active job','red'); return; }
+  endJob();
+}
+
+function updateLiveJobStatus(){
+  const cj=appState.currentJob;
+  if(!cj || !cj.startedAt) return;
+  const elapsedMin = (Date.now()-cj.startedAt)/60000;
+  document.getElementById('liveJobElapsed').textContent = fmtHM(elapsedMin);
+  document.getElementById('liveJobActive').textContent = cj.activeTasks.length;
+  document.getElementById('liveJobDone').textContent = cj.completedTasks.length;
+  if(cj.plannedStart && cj.plannedEnd){
+    document.getElementById('liveJobPlanned').textContent = cj.plannedStart+' → '+cj.plannedEnd;
+  } else {
+    document.getElementById('liveJobPlanned').textContent = '—';
+  }
+}
+
+/* ====================================================================
+   ASSIGN VIEW
+   ==================================================================== */
+
+let assignSel = {
+  mode: 'multi',          // 'multi' = bundle, 'single' = legacy single
+  workerId: null,
+  sectionId: null,
+  taskId: null,           // legacy single
+  selectedTaskIds: [],    // multi mode: checklist task ids
+  customTasks: [],        // multi mode: [{id, name, minutes, applyDirt, reason}]
+  dirtId: null,
+  isCustom: false,        // legacy single
+  usePerTaskDirt: false,
+  perTaskDirt: {}         // reserved for future per-task dirt extension
+};
+
+/* mode switch */
+function setAssignMode(mode){
+  if(mode!==assignSel.mode){
+    assignSel.mode = mode;
+    // reset per-mode selection state but keep worker/section/dirt
+    assignSel.taskId = null;
+    assignSel.isCustom = false;
+    assignSel.selectedTaskIds = [];
+    assignSel.customTasks = [];
+  }
+  document.querySelectorAll('.assign-mode button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.mode===mode);
+  });
+  document.getElementById('multi-task-card').style.display  = mode==='multi'?'':'none';
+  document.getElementById('single-task-card').style.display = mode==='single'?'':'none';
+  document.getElementById('btn-start-main').textContent =
+    mode==='multi' ? '▶ Start selected tasks' : '▶ Start Task';
+  renderAssign();
+}
+
+function renderAssign(){
+  if(!appState.currentJob){
+    document.getElementById('view-assign').innerHTML =
+      '<div class="empty"><span class="ic">📋</span><b>No active job.</b><br>Start a job first from the Job tab.<br><br>'+
+      '<button class="btn green sm" onclick="switchView(\'job\')">Go to Job</button></div>';
+    return;
+  }
+  // Re-render the full assign view (in case it was replaced by empty state)
+  if(!document.getElementById('assign-workers')){
+    location.reload(); return;
+  }
+
+  // Workers
+  const cj=appState.currentJob;
+  document.getElementById('assign-workers').innerHTML = cj.workers.map(w=>{
+    const initials = w.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
+    const sel = assignSel.workerId===w.id ? 'selected':'';
+    return `<div class="pick-card ${sel}" onclick="pickWorker('${w.id}')">
+      <div class="avatar">${initials}</div>
+      <div>${escapeHtml(w.name)}</div>
+      <div class="role">${escapeHtml(w.role)}</div>
+    </div>`;
+  }).join('');
+
+  // Sections (from chosen service + custom areas)
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  const sections = svc ? svc.sections.slice() : [];
+  const customSections = (cj.customAreas||[]).map(c=>({id:c.id, name:c.name, _custom:true, tasks:[]}));
+  const allSecs = [...sections, ...customSections];
+  document.getElementById('assign-sections').innerHTML = allSecs.map(s=>{
+    const sel = assignSel.sectionId===s.id?'selected':'';
+    return `<div class="pick-card ${sel}" onclick="pickSection('${s.id}')">
+      <div style="font-size:18px">${s._custom?'🏷':'🏠'}</div>
+      <div style="font-size:13px">${escapeHtml(s.name)}</div>
+    </div>`;
+  }).join('') || '<div class="empty">No sections in this service</div>';
+
+  // Task UI (multi or single)
+  if(assignSel.mode==='multi'){
+    renderTaskMultiSelect();
+  } else {
+    refreshTaskSelect();
+  }
+
+  // Dirt buttons
+  document.getElementById('assign-dirts').innerHTML = appState.dirtLevels.map(d=>{
+    const sel = assignSel.dirtId===d.id?'selected':'';
+    return `<button class="dirt-btn ${sel}" data-sev="${d.severity}" onclick="pickDirt('${d.id}')">
+      ${escapeHtml(d.swedish)}
+      <span class="mult">×${d.multiplier}</span>
+    </button>`;
+  }).join('');
+
+  // default dirt = job's general dirt
+  if(!assignSel.dirtId) assignSel.dirtId = cj.generalDirtLevelId;
+  updateAssignPreview();
+}
+
+function pickWorker(id){ assignSel.workerId=id; renderAssign(); }
+function pickSection(id){
+  // When section changes: clear selectedTaskIds, customTasks, single taskId; keep worker + dirt
+  assignSel.sectionId=id;
+  assignSel.taskId=null;
+  assignSel.isCustom=false;
+  assignSel.selectedTaskIds=[];
+  assignSel.customTasks=[];
+  renderAssign();
+}
+function pickDirt(id){ assignSel.dirtId=id; renderAssign(); }
+
+/* ================================================================
+   MULTI-SELECT TASK UI (bundle mode)
+   ================================================================ */
+
+function renderTaskMultiSelect(){
+  const list = document.getElementById('assign-multi-list');
+  const head = document.getElementById('multi-head');
+  if(!list) return;
+
+  const cj = appState.currentJob;
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  const sec = svc?.sections.find(s=>s.id===assignSel.sectionId);
+
+  let html = '';
+  if(sec){
+    html += sec.tasks.map(t=>{
+      const isSel = assignSel.selectedTaskIds.includes(t.id);
+      const addonCls = t.addon?'addon':'';
+      const flag = t.addon?'<span class="tm-flag">tillval</span>':'';
+      return `<div class="task-multi-card ${isSel?'selected':''} ${addonCls}" onclick="toggleSelectedTask('${t.id}')">
+        <div class="tm-check">✓</div>
+        <div class="tm-body">
+          <div class="tm-name">${flag}${escapeHtml(t.name)}</div>
+          ${t.desc?'<div class="tm-desc">'+escapeHtml(t.desc)+'</div>':''}
+        </div>
+        <div class="tm-min">${t.minutes} min</div>
+      </div>`;
+    }).join('');
+  } else {
+    html += '<div class="empty" style="padding:14px">Pick a section first</div>';
+  }
+
+  // Custom tasks
+  assignSel.customTasks.forEach(ct=>{
+    html += `<div class="custom-task-row">
+      <div class="ctr-body">
+        <div class="ctr-name">+ ${escapeHtml(ct.name)}</div>
+        <div class="ctr-meta">${ct.minutes} min ${ct.applyDirt?'· × dirt':''}${ct.reason?' · '+escapeHtml(ct.reason):''}</div>
+      </div>
+      <button class="btn red xs" onclick="removeCustomTaskFromSelection('${ct.id}')">✕</button>
+    </div>`;
+  });
+
+  list.innerHTML = html;
+
+  // Header summary
+  const selCount = getBundleTaskCount();
+  if(selCount>0){
+    head.style.display = '';
+    const ref = calculateBundleReference();
+    const adj = calculateBundleAdjusted();
+    document.getElementById('multi-count').textContent = selCount+' selected';
+    document.getElementById('multi-sum').textContent = 'Ref: '+fmtMin(ref)+' · Adj: '+fmtMin(adj);
+  } else {
+    head.style.display = 'none';
+  }
+}
+
+function toggleSelectedTask(taskId){
+  const i = assignSel.selectedTaskIds.indexOf(taskId);
+  if(i>=0) assignSel.selectedTaskIds.splice(i,1);
+  else assignSel.selectedTaskIds.push(taskId);
+  renderAssign();
+}
+
+function multiSelectAll(){
+  const cj = appState.currentJob;
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  const sec = svc?.sections.find(s=>s.id===assignSel.sectionId);
+  if(!sec){ toast('Pick a section first','red'); return; }
+  assignSel.selectedTaskIds = sec.tasks.map(t=>t.id);
+  renderAssign();
+}
+function multiClear(){
+  assignSel.selectedTaskIds = [];
+  assignSel.customTasks = [];
+  renderAssign();
+}
+
+function openAddCustomTaskModal(){
+  const html = `
+    <div class="grab"></div>
+    <h3>Add custom task to bundle</h3>
+    <label>Task name</label>
+    <input type="text" id="ct-name" placeholder="e.g. Tvätta källardörren" />
+    <label>Reference minutes</label>
+    <input type="number" id="ct-min" placeholder="15" min="1" />
+    <label style="display:flex;align-items:center;gap:8px;margin-top:8px;text-transform:none;font-size:13px">
+      <input type="checkbox" id="ct-apply" style="width:auto" />
+      Apply dirt multiplier to this custom task
+    </label>
+    <label>Reason / notes (optional)</label>
+    <input type="text" id="ct-reason" placeholder="Why is this a custom task?" />
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn alt" onclick="closeModal()">Cancel</button>
+      <button class="btn green" onclick="addCustomTaskToSelection()">+ Add to bundle</button>
+    </div>
+  `;
+  openModal(html);
+}
+
+function addCustomTaskToSelection(){
+  const name = document.getElementById('ct-name').value.trim();
+  const min = parseFloat(document.getElementById('ct-min').value);
+  const apply = document.getElementById('ct-apply').checked;
+  const reason = document.getElementById('ct-reason').value.trim();
+  if(!name){ toast('Enter a name','red'); return; }
+  if(!min || min<=0){ toast('Enter reference minutes','red'); return; }
+  assignSel.customTasks.push({id:uid('ct'), name, minutes:min, applyDirt:apply, reason});
+  closeModal();
+  renderAssign();
+  toast('Custom task added','green');
+}
+
+function removeCustomTaskFromSelection(customId){
+  assignSel.customTasks = assignSel.customTasks.filter(c=>c.id!==customId);
+  renderAssign();
+}
+
+/* Get every selected task object (both checklist + custom) with computed adjusted minutes */
+function getSelectedTaskObjects(){
+  const cj = appState.currentJob;
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  const sec = svc?.sections.find(s=>s.id===assignSel.sectionId);
+  const dirt = appState.dirtLevels.find(d=>d.id===assignSel.dirtId);
+  const mult = dirt?dirt.multiplier:1;
+
+  const out = [];
+  if(sec){
+    assignSel.selectedTaskIds.forEach(tid=>{
+      const t = sec.tasks.find(x=>x.id===tid);
+      if(!t) return;
+      const adj = calcAdjusted(t.minutes, mult);
+      out.push({
+        taskId: t.id, taskName: t.name,
+        referenceMinutes: t.minutes,
+        dirtLevelId: dirt?.id, dirtLevelName: dirt?dirt.swedish:'', dirtMultiplier: mult,
+        adjustedMinutes: adj,
+        isCustomTask: false, customReason: ''
+      });
+    });
+  }
+  // custom tasks
+  assignSel.customTasks.forEach(ct=>{
+    const cmult = ct.applyDirt ? mult : 1;
+    const cdirt = ct.applyDirt ? dirt : null;
+    out.push({
+      taskId: null, taskName: ct.name,
+      referenceMinutes: ct.minutes,
+      dirtLevelId: cdirt?.id || null,
+      dirtLevelName: cdirt?cdirt.swedish:'',
+      dirtMultiplier: cmult,
+      adjustedMinutes: calcAdjusted(ct.minutes, cmult),
+      isCustomTask: true,
+      customReason: ct.reason||''
+    });
+  });
+  return out;
+}
+
+function getBundleTaskCount(){
+  return assignSel.selectedTaskIds.length + assignSel.customTasks.length;
+}
+function calculateBundleReference(){
+  return getSelectedTaskObjects().reduce((s,t)=>s+(t.referenceMinutes||0), 0);
+}
+function calculateBundleAdjusted(){
+  return getSelectedTaskObjects().reduce((s,t)=>s+(t.adjustedMinutes||0), 0);
+}
+
+/* ================================================================
+   LEGACY SINGLE-TASK SELECT (preserved)
+   ================================================================ */
+
+function refreshTaskSelect(){
+  const sel = document.getElementById('assign-task');
+  if(!sel) return;
+  const cj=appState.currentJob;
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  const sec = svc?.sections.find(s=>s.id===assignSel.sectionId);
+  let opts = '<option value="">— Choose task —</option>';
+  if(sec){
+    opts += sec.tasks.map(t=>{
+      const flag = t.addon?' [tillval]':'';
+      return `<option value="${t.id}">${escapeHtml(t.name)} — ${t.minutes} min${flag}</option>`;
+    }).join('');
+  }
+  opts += '<option value="__custom__">+ Other task (custom)</option>';
+  sel.innerHTML = opts;
+  sel.value = assignSel.isCustom ? '__custom__' : (assignSel.taskId||'');
+  const cBox = document.getElementById('customTaskBox');
+  if(cBox) cBox.style.display = assignSel.isCustom?'':'none';
+}
+function onAssignTaskChange(){
+  const v = document.getElementById('assign-task').value;
+  if(v==='__custom__'){ assignSel.isCustom=true; assignSel.taskId=null; }
+  else{ assignSel.isCustom=false; assignSel.taskId = v||null; }
+  refreshTaskSelect();
+  updateAssignPreview();
+}
+
+function getAssignRefMinSingle(){
+  if(assignSel.isCustom){
+    const v = parseFloat(document.getElementById('customTaskMin').value);
+    return isNaN(v)?0:v;
+  }
+  if(!assignSel.taskId) return 0;
+  const cj=appState.currentJob;
+  const svc=appState.services.find(s=>s.id===cj.serviceId);
+  for(const sec of svc.sections){
+    const t = sec.tasks.find(x=>x.id===assignSel.taskId);
+    if(t) return t.minutes;
+  }
+  return 0;
+}
+function getAssignMultiplierSingle(){
+  if(assignSel.isCustom){
+    const apply = document.getElementById('customTaskApplyDirt')?.checked;
+    if(!apply) return 1;
+  }
+  const d = appState.dirtLevels.find(x=>x.id===assignSel.dirtId);
+  return d?d.multiplier:1;
+}
+
+/* ================================================================
+   ASSIGN PREVIEW (mode-aware)
+   ================================================================ */
+
+function updateAssignPreview(){
+  const wrap = document.getElementById('assign-preview');
+  const body = document.getElementById('preview-body');
+  if(!wrap || !body) return;
+
+  if(assignSel.mode==='multi'){
+    const objs = getSelectedTaskObjects();
+    if(!objs.length){ wrap.style.display='none'; return; }
+    const dirt = appState.dirtLevels.find(d=>d.id===assignSel.dirtId);
+    const totalRef = objs.reduce((s,t)=>s+t.referenceMinutes,0);
+    const totalAdj = objs.reduce((s,t)=>s+t.adjustedMinutes,0);
+    const worker = appState.currentJob?.workers.find(w=>w.id===assignSel.workerId);
+    const svc = appState.services.find(s=>s.id===appState.currentJob?.serviceId);
+    const sec = svc?.sections.find(s=>s.id===assignSel.sectionId)
+              || (appState.currentJob?.customAreas||[]).find(c=>c.id===assignSel.sectionId);
+
+    wrap.style.display='';
+    body.innerHTML = `
+      <div class="bundle-summary">
+        <div class="row1">
+          <div>
+            <div class="lbl">Bundle preview</div>
+            <div style="font-size:14px;font-weight:700">${escapeHtml(worker?.name||'— worker —')} · ${escapeHtml(sec?.name||'— section —')}</div>
+            <div class="ref">${objs.length} tasks · Reference <b>${fmtMin(totalRef)}</b></div>
+          </div>
+          <div style="text-align:left">
+            <div class="lbl">Adjusted</div>
+            <div class="val">${fmtMin(totalAdj)}</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">${escapeHtml(dirt?dirt.swedish:'—')} · ×${dirt?dirt.multiplier:'1.00'}</div>
+          </div>
+        </div>
+        <div class="list">
+          ${objs.map(o=>`<div class="li"><span>${escapeHtml(o.taskName)}${o.isCustomTask?' <span style="color:var(--yellow);font-weight:700">[custom]</span>':''}</span><span>${fmtMin(o.referenceMinutes)} → <b>${fmtMin(o.adjustedMinutes)}</b></span></div>`).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    // single
+    const ref = getAssignRefMinSingle();
+    const mult = getAssignMultiplierSingle();
+    const adj = calcAdjusted(ref, mult);
+    if(!(ref>0)){ wrap.style.display='none'; return; }
+    wrap.style.display='';
+    body.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <div>
+          Reference: <b>${fmtMin(ref)}</b><br>
+          <span style="font-size:12px;color:var(--muted)">× ${mult.toFixed(2)}</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase">Adjusted</div>
+          <div style="font-size:22px;font-weight:800;color:var(--navy)">${fmtMin(adj)}</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// keep preview live as user types in custom box (single mode)
+document.addEventListener('input', e=>{
+  if(e.target.id==='customTaskMin' || e.target.id==='customTaskApplyDirt'){
+    updateAssignPreview();
+  }
+});
+
+/* ================================================================
+   START ASSIGNMENT (bundle or single)
+   ================================================================ */
+
+function startAssignment(keepWorker){
+  if(assignSel.mode==='multi') return startTaskBundle(keepWorker);
+  return startTask(keepWorker);
+}
+
+function startTaskBundle(keepWorker){
+  const cj=appState.currentJob;
+  if(!cj){ toast('Start a job first','red'); return; }
+  if(!assignSel.workerId){ toast('Pick a worker','red'); return; }
+  if(!assignSel.sectionId){ toast('Pick a section','red'); return; }
+  const objs = getSelectedTaskObjects();
+  if(!objs.length){ toast('Select at least one task','red'); return; }
+
+  const worker = cj.workers.find(w=>w.id===assignSel.workerId);
+  const svc = appState.services.find(s=>s.id===cj.serviceId);
+  let sectionName='';
+  const stdSec = svc.sections.find(s=>s.id===assignSel.sectionId);
+  if(stdSec) sectionName = stdSec.name;
+  else {
+    const c = (cj.customAreas||[]).find(c=>c.id===assignSel.sectionId);
+    if(c) sectionName=c.name;
+  }
+  const dirt = appState.dirtLevels.find(d=>d.id===assignSel.dirtId);
+  const totalRef = objs.reduce((s,t)=>s+t.referenceMinutes,0);
+  const totalAdj = objs.reduce((s,t)=>s+t.adjustedMinutes,0);
+
+  const bundleId = uid('b');
+
+  const bundle = {
+    id: uid('t'),                                  // unique active task id
+    type: 'bundle',
+    bundleId,
+    jobId: cj.id,
+    workerId: worker.id,
+    workerName: worker.name,
+    serviceId: cj.serviceId,
+    serviceName: cj.serviceName,
+    sectionId: assignSel.sectionId,
+    sectionName,
+    selectedTasks: objs,                          // child snapshots
+    bundleTaskCount: objs.length,
+    taskName: 'Task bundle: '+objs.length+' tasks',
+    referenceMinutes: totalRef,
+    dirtLevelId: dirt?.id,
+    dirtLevelName: dirt?dirt.swedish:'',
+    dirtMultiplier: dirt?dirt.multiplier:1,
+    adjustedMinutes: totalAdj,
+    startTime: Date.now(),
+    endTime: null,
+    pausedDurationMs: 0,
+    pausedAt: null,
+    actualMinutes: null,
+    quality: null,
+    evaluationLabel: null,
+    performanceRatio: null,
+    notes: '',
+    delayReason: '',
+    deviations: [],
+    reworkOfTaskId: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  cj.activeTasks.push(bundle);
+  appState.ui.lastAssignment = {
+    mode: 'multi',
+    workerId: assignSel.workerId,
+    sectionId: assignSel.sectionId,
+    selectedTaskIds: assignSel.selectedTaskIds.slice(),
+    customTasks: assignSel.customTasks.map(c=>({...c})),
+    dirtId: assignSel.dirtId
+  };
+  appState.ui.lastWorkerId = assignSel.workerId;
+  save();
+  toast('Bundle started — '+objs.length+' tasks','green');
+
+  // reset selection (keep section + dirt + maybe worker)
+  if(!keepWorker) assignSel.workerId = null;
+  assignSel.selectedTaskIds = [];
+  assignSel.customTasks = [];
+
+  switchView('active');
+}
+
+/* Legacy single-task start (kept identical behavior) */
+function startTask(keepWorker){
+  const cj=appState.currentJob;
+  if(!cj){ toast('Start a job first','red'); return; }
+  if(!assignSel.workerId){ toast('Pick a worker','red'); return; }
+  if(!assignSel.sectionId){ toast('Pick a section','red'); return; }
+
+  let taskName, refMin, isCustom=false, customReason='';
+  if(assignSel.isCustom){
+    taskName = document.getElementById('customTaskName').value.trim();
+    refMin = parseFloat(document.getElementById('customTaskMin').value);
+    customReason = document.getElementById('customTaskReason').value.trim();
+    if(!taskName){ toast('Enter custom task name','red'); return; }
+    if(!refMin || refMin<=0){ toast('Enter custom reference time','red'); return; }
+    isCustom=true;
+  } else {
+    if(!assignSel.taskId){ toast('Pick a task','red'); return; }
+    const svc=appState.services.find(s=>s.id===cj.serviceId);
+    let t=null;
+    svc.sections.forEach(sec=>{ const f=sec.tasks.find(x=>x.id===assignSel.taskId); if(f) t=f; });
+    if(!t){ toast('Task not found','red'); return; }
+    taskName = t.name; refMin = t.minutes;
+  }
+
+  const worker = cj.workers.find(w=>w.id===assignSel.workerId);
+  const dirt = appState.dirtLevels.find(d=>d.id===assignSel.dirtId);
+  const mult = getAssignMultiplierSingle();
+  const adj = calcAdjusted(refMin, mult);
+
+  // section / area name
+  const svc=appState.services.find(s=>s.id===cj.serviceId);
+  let sectionName='';
+  const stdSec = svc.sections.find(s=>s.id===assignSel.sectionId);
+  if(stdSec) sectionName = stdSec.name;
+  else {
+    const c = (cj.customAreas||[]).find(c=>c.id===assignSel.sectionId);
+    if(c) sectionName=c.name;
+  }
+
+  const task = {
+    id: uid('t'),
+    jobId: cj.id,
+    workerId: worker.id,
+    workerName: worker.name,
+    serviceId: cj.serviceId,
+    serviceName: cj.serviceName,
+    sectionId: assignSel.sectionId,
+    sectionName,
+    taskId: assignSel.taskId,
+    taskName,
+    isCustomTask: isCustom,
+    customReason,
+    referenceMinutes: refMin,
+    dirtLevelId: dirt?.id,
+    dirtLevelName: dirt?dirt.swedish:'',
+    dirtMultiplier: mult,
+    adjustedMinutes: adj,
+    startTime: Date.now(),
+    endTime: null,
+    pausedDurationMs: 0,
+    pausedAt: null,
+    actualMinutes: null,
+    quality: null,
+    evaluationLabel: null,
+    performanceRatio: null,
+    notes: '',
+    delayReason: '',
+    deviations: [],
+    reworkOfTaskId: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  cj.activeTasks.push(task);
+  appState.ui.lastAssignment = {
+    mode: 'single',
+    workerId: assignSel.workerId, sectionId: assignSel.sectionId,
+    taskId: assignSel.taskId, isCustom, dirtId: assignSel.dirtId,
+    customName: isCustom?taskName:null, customMin: isCustom?refMin:null
+  };
+  appState.ui.lastWorkerId = assignSel.workerId;
+  save();
+  toast('Task started: '+taskName,'green');
+
+  // reset selectors except keep worker if requested
+  if(!keepWorker) assignSel.workerId=null;
+  assignSel.taskId=null; assignSel.isCustom=false;
+  const cn=document.getElementById('customTaskName'); if(cn) cn.value='';
+  const cm=document.getElementById('customTaskMin');  if(cm) cm.value='';
+  const ca=document.getElementById('customTaskApplyDirt'); if(ca) ca.checked=false;
+  const cr=document.getElementById('customTaskReason');    if(cr) cr.value='';
+
+  switchView('active');
+}
+
+function duplicateLast(){
+  const last = appState.ui.lastAssignment;
+  if(!last){ toast('No previous assignment','red'); return; }
+  // restore mode + selection
+  if(last.mode==='multi'){
+    setAssignMode('multi');
+    assignSel.workerId = last.workerId;
+    assignSel.sectionId = last.sectionId;
+    assignSel.dirtId = last.dirtId;
+    assignSel.selectedTaskIds = (last.selectedTaskIds||[]).slice();
+    assignSel.customTasks = (last.customTasks||[]).map(c=>({...c}));
+  } else {
+    setAssignMode('single');
+    assignSel.workerId = last.workerId;
+    assignSel.sectionId = last.sectionId;
+    assignSel.dirtId = last.dirtId;
+    assignSel.taskId = last.taskId;
+    assignSel.isCustom = !!last.isCustom;
+    if(last.isCustom){
+      setTimeout(()=>{
+        const cn=document.getElementById('customTaskName'); if(cn) cn.value=last.customName||'';
+        const cm=document.getElementById('customTaskMin');  if(cm) cm.value=last.customMin||'';
+      },50);
+    }
+  }
+  renderAssign();
+  toast('Duplicated last — change worker or hit Start');
+}
+function assignSameToOther(){
+  const last = appState.ui.lastAssignment;
+  if(!last){ toast('No previous assignment','red'); return; }
+  duplicateLast();
+  assignSel.workerId = null;
+  renderAssign();
+  toast('Same task — pick another worker');
+}
+
+function addRoom(){
+  const cj=appState.currentJob;
+  if(!cj){ toast('Start a job first','red'); return; }
+  cj.customAreas = cj.customAreas||[];
+  const n = cj.customAreas.filter(a=>/^Room \d+/.test(a.name)).length+1;
+  cj.customAreas.push({id:uid('sec'), name:'Room '+n});
+  save(); renderAssign();
+}
+function addCustomArea(){
+  const cj=appState.currentJob;
+  if(!cj){ toast('Start a job first','red'); return; }
+  const name = prompt('Area name:'); if(!name) return;
+  cj.customAreas = cj.customAreas||[];
+  cj.customAreas.push({id:uid('sec'), name});
+  save(); renderAssign();
+}
+
+/* ====================================================================
+   ACTIVE TASKS VIEW
+   ==================================================================== */
+
+let liveTimerInterval = null;
+
+function renderActive(){
+  const cj=appState.currentJob;
+  const wrap=document.getElementById('activeList');
+  if(!cj){
+    wrap.innerHTML='<div class="empty"><span class="ic">📋</span>No active job</div>';
+    document.getElementById('deviationList').innerHTML='';
+    return;
+  }
+  if(!cj.activeTasks.length){
+    wrap.innerHTML='<div class="empty"><span class="ic">⏱</span>No tasks running.<br><br><button class="btn green sm" onclick="switchView(\'assign\')">Assign a task</button></div>';
+  } else {
+    wrap.innerHTML = cj.activeTasks.map(renderActiveCard).join('');
+  }
+
+  // Deviations list
+  const dwrap = document.getElementById('deviationList');
+  if(!cj.deviations || !cj.deviations.length){
+    dwrap.innerHTML='<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px">No deviations recorded.</div>';
+  } else {
+    dwrap.innerHTML = cj.deviations.map(dv=>`
+      <div class="task-card">
+        <div class="tc-top">
+          <div>
+            <div class="tc-name">${escapeHtml(dv.title||'Avvikelse')}</div>
+            <div class="tc-meta">${escapeHtml(dv.area||'—')} · ${escapeHtml(dv.severity||'Info')}${dv.lostMinutes?' · −'+dv.lostMinutes+' min':''}</div>
+          </div>
+          <span class="chip ${dv.severity==='Critical'?'red':dv.severity==='Important'?'yellow':'blue'}">${escapeHtml(dv.severity||'Info')}</span>
+        </div>
+        ${dv.description?'<div style="margin-top:6px;font-size:13px">'+escapeHtml(dv.description)+'</div>':''}
+      </div>
+    `).join('');
+  }
+}
+
+function renderActiveCard(t){
+  // cap progress at adjusted time, but show real elapsed
+  const adjMs = t.adjustedMinutes*60000;
+  let elapsedMs = (t.pausedAt? t.pausedAt : Date.now()) - t.startTime - (t.pausedDurationMs||0);
+  if(elapsedMs<0) elapsedMs=0;
+  const ratio = adjMs>0? elapsedMs/adjMs : 0;
+  const pct = Math.min(100, Math.round(ratio*100));
+  let cls = '';
+  if(ratio>=1) cls='late';
+  else if(ratio>=0.85) cls='warn';
+  if(t.pausedAt) cls='paused';
+
+  const isBundle = t.type==='bundle';
+  const expandedKey = '_exp_'+t.id;
+  const isExpanded = !!window[expandedKey];
+
+  const titleHtml = isBundle
+    ? `<div class="task"><span class="area">${escapeHtml(t.sectionName)} · </span>Task bundle — ${t.bundleTaskCount} tasks</div>`
+    : `<div class="task"><span class="area">${escapeHtml(t.sectionName)} · </span>${escapeHtml(t.taskName)}</div>`;
+
+  const expandHtml = isBundle ? `
+    <button class="bundle-toggle" onclick="toggleBundleExpand('${t.id}', this)">
+      ${isExpanded?'▼ Hide tasks':'▶ Show tasks'}
+    </button>
+    <div class="bundle-tasks-list" style="display:${isExpanded?'':'none'}" id="btl-${t.id}">
+      ${t.selectedTasks.map(st=>`
+        <div class="bt-row">
+          <span class="bt-name">${escapeHtml(st.taskName)}${st.isCustomTask?' <span style="color:var(--orange);font-size:10px">[custom]</span>':''}</span>
+          <span class="bt-min">${fmtMin(st.referenceMinutes)} → ${fmtMin(st.adjustedMinutes)}</span>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const stopFn = isBundle ? `openStopBundleModal('${t.id}')` : `openStopModal('${t.id}')`;
+
+  return `<div class="active-card ${cls}" id="ac-${t.id}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+      <div style="min-width:0;flex:1">
+        <div class="worker">${escapeHtml(t.workerName)}${isBundle?' <span class="chip navy" style="font-size:10px;font-weight:700">📦 Bundle</span>':''}</div>
+        ${titleHtml}
+      </div>
+      <span class="chip ${cls==='late'?'red':cls==='warn'?'yellow':'green'}">${cls==='late'?'Over':cls==='warn'?'Approaching':cls==='paused'?'Paused':'On time'}</span>
+    </div>
+    <div class="timer-big" data-elapsed="${t.startTime}" data-paused="${t.pausedDurationMs||0}" data-pausedat="${t.pausedAt||0}">${fmtTimerMs(elapsedMs)}</div>
+    <div class="meta-row">
+      <span>Ref: <b>${fmtMin(t.referenceMinutes)}</b> · ×${t.dirtMultiplier}</span>
+      <span>Adjusted: <b>${fmtMin(t.adjustedMinutes)}</b></span>
+    </div>
+    <div class="progress"><div style="width:${pct}%"></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      ${t.pausedAt
+        ? `<button class="btn green xs" onclick="resumeTask('${t.id}')">▶ Resume</button>`
+        : `<button class="btn alt xs" onclick="pauseTask('${t.id}')">⏸ Pause</button>`}
+      <button class="btn red xs" onclick="${stopFn}">■ Stop</button>
+      <button class="btn ghost xs" onclick="addQuickNote('${t.id}')">📝 Note</button>
+      <button class="btn warn xs" onclick="openDeviationModal('${t.id}')">⚠ Avvikelse</button>
+    </div>
+    ${expandHtml}
+    ${t.notes?'<div style="margin-top:8px;padding:6px 8px;background:var(--card-alt);border-radius:6px;font-size:12px">📝 '+escapeHtml(t.notes)+'</div>':''}
+  </div>`;
+}
+
+function toggleBundleExpand(id, btn){
+  const key = '_exp_'+id;
+  window[key] = !window[key];
+  const list = document.getElementById('btl-'+id);
+  if(list) list.style.display = window[key]?'':'none';
+  if(btn) btn.textContent = window[key] ? '▼ Hide tasks' : '▶ Show tasks';
+}
+
+function startLiveTimers(){
+  if(liveTimerInterval) clearInterval(liveTimerInterval);
+  liveTimerInterval = setInterval(()=>{
+    const cj=appState.currentJob;
+    if(!cj) return;
+    cj.activeTasks.forEach(t=>{
+      const card = document.getElementById('ac-'+t.id);
+      if(!card) return;
+      const big = card.querySelector('.timer-big');
+      const adjMs = t.adjustedMinutes*60000;
+      let elapsedMs = (t.pausedAt? t.pausedAt : Date.now()) - t.startTime - (t.pausedDurationMs||0);
+      if(elapsedMs<0) elapsedMs=0;
+      big.textContent = fmtTimerMs(elapsedMs);
+      // recolor on threshold cross
+      const ratio = adjMs>0? elapsedMs/adjMs : 0;
+      const pct = Math.min(100, Math.round(ratio*100));
+      const bar = card.querySelector('.progress > div');
+      if(bar) bar.style.width = pct+'%';
+      const wantCls = t.pausedAt ? 'paused' : (ratio>=1?'late':ratio>=0.85?'warn':'');
+      card.classList.remove('late','warn','paused');
+      if(wantCls) card.classList.add(wantCls);
+    });
+    if(document.getElementById('liveJobElapsed')) updateLiveJobStatus();
+  }, 1000);
+}
+
+function pauseTask(id){
+  const t = findActiveTask(id); if(!t || t.pausedAt) return;
+  t.pausedAt = Date.now();
+  save(); renderActive();
+}
+function resumeTask(id){
+  const t = findActiveTask(id); if(!t || !t.pausedAt) return;
+  t.pausedDurationMs = (t.pausedDurationMs||0) + (Date.now()-t.pausedAt);
+  t.pausedAt = null;
+  save(); renderActive();
+}
+function findActiveTask(id){
+  return appState.currentJob?.activeTasks.find(x=>x.id===id);
+}
+function addQuickNote(id){
+  const t = findActiveTask(id); if(!t) return;
+  const n = prompt('Add note:', t.notes||''); if(n===null) return;
+  t.notes = n; save(); renderActive();
+}
+
+/* ---- STOP TASK modal ---- */
+
+function openStopModal(id){
+  const t = findActiveTask(id); if(!t) return;
+  // compute live elapsed
+  let elapsedMs = (t.pausedAt? t.pausedAt : Date.now()) - t.startTime - (t.pausedDurationMs||0);
+  const actualMin = elapsedMs/60000;
+  const ratioPct = t.adjustedMinutes>0 ? (actualMin/t.adjustedMinutes)*100 : null;
+  const requireDelay = ratioPct!=null && ratioPct > appState.evaluationRules.delayReasonRequiredAt;
+
+  const delayOpts = appState.delayReasons.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+
+  const html = `
+    <div class="grab"></div>
+    <h3>Stop task — quality check</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 10px">
+      ${escapeHtml(t.workerName)} · ${escapeHtml(t.sectionName)} · ${escapeHtml(t.taskName)}
+    </p>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="v">${fmtMin(t.adjustedMinutes)}</div><div class="l">Adjusted</div></div>
+      <div class="kpi ${ratioPct>115?'red':ratioPct>100?'yellow':'green'}"><div class="v">${fmtMin(actualMin)}</div><div class="l">Actual</div></div>
+    </div>
+    <div style="text-align:center;margin:8px 0 14px;font-size:14px">
+      Performance: <b>${ratioPct!=null? Math.round(ratioPct)+'%' : '—'}</b>
+    </div>
+
+    <label>Quality</label>
+    <div class="seg" id="stop-quality">
+      <button data-v="Approved" class="active">✓ Approved</button>
+      <button data-v="Needs correction">⚠ Needs correction</button>
+      <button data-v="Rejected">✕ Rejected</button>
+    </div>
+
+    <label>Notes</label>
+    <textarea id="stop-notes" placeholder="Optional notes (work observations, customer feedback, etc.)">${escapeHtml(t.notes||'')}</textarea>
+
+    ${requireDelay? `
+      <label>Delay reason <span style="color:var(--red)">*required</span></label>
+      <select id="stop-delay"><option value="">— Choose reason —</option>${delayOpts}</select>
+    ` : `
+      <label>Delay reason (optional)</label>
+      <select id="stop-delay"><option value="">— None —</option>${delayOpts}</select>
+    `}
+
+    <div id="reworkBox" style="display:none;margin-top:12px;padding:10px;background:#fff5f5;border-radius:10px;border:1px solid #f4cccc">
+      <label style="margin-top:0">Create rework task?</label>
+      <div class="row cols-2">
+        <select id="reworkWorker">${appState.currentJob.workers.map(w=>`<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('')}</select>
+        <input type="number" id="reworkMin" placeholder="Reference min" value="${Math.round(t.referenceMinutes/2)}" />
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;text-transform:none;font-size:13px">
+        <input type="checkbox" id="reworkCreate" style="width:auto" /> Yes, create rework task now
+      </label>
+    </div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn alt" onclick="closeModal()">Cancel</button>
+      <button class="btn green" onclick="confirmStopTask('${t.id}', ${requireDelay})">Confirm</button>
+    </div>
+  `;
+  openModal(html);
+
+  // wire seg control
+  document.querySelectorAll('#stop-quality button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#stop-quality button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      const v = b.dataset.v;
+      document.getElementById('reworkBox').style.display = (v==='Needs correction'||v==='Rejected')?'':'none';
+    };
+  });
+}
+
+function confirmStopTask(id, delayRequired){
+  const t = findActiveTask(id); if(!t) return;
+  const cj = appState.currentJob;
+
+  // close pause if still paused (resume the time)
+  if(t.pausedAt){
+    t.pausedDurationMs = (t.pausedDurationMs||0) + (Date.now()-t.pausedAt);
+    t.pausedAt = null;
+  }
+  t.endTime = Date.now();
+  t.actualMinutes = calcActualMinutes(t.startTime, t.endTime, t.pausedDurationMs);
+  t.performanceRatio = calcPerfRatio(t.actualMinutes, t.adjustedMinutes);
+
+  const quality = document.querySelector('#stop-quality button.active')?.dataset.v || 'Approved';
+  const notes = document.getElementById('stop-notes').value.trim();
+  const delay = document.getElementById('stop-delay').value;
+
+  if(delayRequired && !delay){ toast('Delay reason is required','red'); return; }
+
+  t.quality = quality;
+  t.notes = notes;
+  t.delayReason = delay;
+  const ratioPct = t.performanceRatio!=null ? t.performanceRatio*100 : null;
+  t.evaluationLabel = getEvaluationLabel(ratioPct, quality).label;
+  t.updatedAt = Date.now();
+
+  // Move from active -> completed
+  cj.activeTasks = cj.activeTasks.filter(x=>x.id!==id);
+  cj.completedTasks.push(t);
+
+  // Optional rework
+  if(quality!=='Approved'){
+    const create = document.getElementById('reworkCreate')?.checked;
+    if(create){
+      const wid = document.getElementById('reworkWorker').value;
+      const rmin = parseFloat(document.getElementById('reworkMin').value)||0;
+      if(rmin>0){
+        const w = cj.workers.find(x=>x.id===wid);
+        const dirt = appState.dirtLevels.find(d=>d.id===cj.generalDirtLevelId);
+        const rework = {
+          id:uid('t'), jobId:cj.id,
+          workerId:w.id, workerName:w.name,
+          serviceId:cj.serviceId, serviceName:cj.serviceName,
+          sectionId:t.sectionId, sectionName:t.sectionName,
+          taskId:null, taskName:'Rework: '+t.taskName, isCustomTask:true,
+          referenceMinutes:rmin, dirtLevelId:dirt?.id, dirtLevelName:dirt?.swedish, dirtMultiplier:1,
+          adjustedMinutes:rmin, startTime:Date.now(), endTime:null,
+          pausedDurationMs:0, pausedAt:null, actualMinutes:null,
+          quality:null, evaluationLabel:null, performanceRatio:null,
+          notes:'Rework of '+t.taskName, delayReason:'', deviations:[],
+          reworkOfTaskId:t.id, createdAt:Date.now(), updatedAt:Date.now()
+        };
+        cj.activeTasks.push(rework);
+        toast('Rework task started','green');
+      }
+    }
+  }
+
+  save();
+  closeModal();
+  renderActive();
+  toast('Task completed: '+t.taskName,'green');
+}
+
+/* ====================================================================
+   BUNDLE: STOP MODAL + CONFIRM + DISTRIBUTION
+   ==================================================================== */
+
+function openStopBundleModal(id){
+  const t = findActiveTask(id); if(!t || t.type!=='bundle') return;
+  let elapsedMs = (t.pausedAt? t.pausedAt : Date.now()) - t.startTime - (t.pausedDurationMs||0);
+  const actualMin = elapsedMs/60000;
+  const ratioPct = t.adjustedMinutes>0 ? (actualMin/t.adjustedMinutes)*100 : null;
+  const requireDelay = ratioPct!=null && ratioPct > appState.evaluationRules.delayReasonRequiredAt;
+
+  const delayOpts = appState.delayReasons.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+
+  const html = `
+    <div class="grab"></div>
+    <h3>Stop bundle — quality check</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 6px">
+      ${escapeHtml(t.workerName)} · ${escapeHtml(t.sectionName)} · ${t.bundleTaskCount} tasks
+    </p>
+    <details style="margin:0 0 10px;font-size:12px">
+      <summary style="cursor:pointer;color:var(--navy);font-weight:600">Show task list</summary>
+      <div style="margin-top:6px;padding:6px 8px;background:var(--card-alt);border-radius:6px">
+        ${t.selectedTasks.map(st=>`<div style="display:flex;justify-content:space-between;padding:2px 0">
+          <span>${escapeHtml(st.taskName)}</span>
+          <span style="color:var(--muted);font-size:11px">${fmtMin(st.adjustedMinutes)}</span>
+        </div>`).join('')}
+      </div>
+    </details>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="v">${fmtMin(t.adjustedMinutes)}</div><div class="l">Adjusted</div></div>
+      <div class="kpi ${ratioPct>115?'red':ratioPct>100?'yellow':'green'}"><div class="v">${fmtMin(actualMin)}</div><div class="l">Actual</div></div>
+    </div>
+    <div style="text-align:center;margin:8px 0 14px;font-size:14px">
+      Performance: <b>${ratioPct!=null? Math.round(ratioPct)+'%' : '—'}</b>
+    </div>
+
+    <label>Quality (whole bundle)</label>
+    <div class="seg" id="stop-quality">
+      <button data-v="Approved" class="active">✓ Approved</button>
+      <button data-v="Needs correction">⚠ Needs correction</button>
+      <button data-v="Rejected">✕ Rejected</button>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;text-transform:none;font-size:13px">
+      <input type="checkbox" id="perTaskQualityToggle" style="width:auto" onchange="togglePerTaskQuality()" />
+      Different quality per task
+    </label>
+    <div class="per-task-quality" id="perTaskQualityBox" style="display:none">
+      ${t.selectedTasks.map((st,i)=>`
+        <div class="ptq-row" data-i="${i}">
+          <div class="ptq-name">${escapeHtml(st.taskName)}</div>
+          <div class="ptq-seg">
+            <button data-v="Approved" class="active">✓</button>
+            <button data-v="Needs correction">⚠</button>
+            <button data-v="Rejected">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <label>Notes</label>
+    <textarea id="stop-notes" placeholder="Optional notes for the whole bundle">${escapeHtml(t.notes||'')}</textarea>
+
+    ${requireDelay? `
+      <label>Delay reason <span style="color:var(--red)">*required</span></label>
+      <select id="stop-delay"><option value="">— Choose reason —</option>${delayOpts}</select>
+    ` : `
+      <label>Delay reason (optional)</label>
+      <select id="stop-delay"><option value="">— None —</option>${delayOpts}</select>
+    `}
+
+    <div id="reworkBox" style="display:none;margin-top:12px;padding:10px;background:#fff5f5;border-radius:10px;border:1px solid #f4cccc">
+      <label style="margin-top:0">Create rework bundle?</label>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        Same selected tasks, same worker, reference time = 50% of original bundle.
+      </div>
+      <div class="row cols-2">
+        <select id="reworkWorker">${appState.currentJob.workers.map(w=>`<option value="${w.id}" ${w.id===t.workerId?'selected':''}>${escapeHtml(w.name)}</option>`).join('')}</select>
+        <input type="number" id="reworkMin" placeholder="Total ref min" value="${Math.round(t.referenceMinutes/2)}" />
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;text-transform:none;font-size:13px">
+        <input type="checkbox" id="reworkCreate" style="width:auto" /> Yes, create rework bundle now
+      </label>
+    </div>
+
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn alt" onclick="closeModal()">Cancel</button>
+      <button class="btn green" onclick="confirmStopBundle('${t.id}', ${requireDelay})">Confirm</button>
+    </div>
+  `;
+  openModal(html);
+
+  // wire bundle quality seg
+  document.querySelectorAll('#stop-quality button').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#stop-quality button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      const v = b.dataset.v;
+      document.getElementById('reworkBox').style.display = (v==='Needs correction'||v==='Rejected')?'':'none';
+      // propagate to per-task UI if NOT in per-task override mode
+      const usingPerTask = document.getElementById('perTaskQualityToggle').checked;
+      if(!usingPerTask){
+        document.querySelectorAll('.per-task-quality .ptq-row').forEach(row=>{
+          row.querySelectorAll('.ptq-seg button').forEach(btn=>btn.classList.toggle('active', btn.dataset.v===v));
+        });
+      }
+    };
+  });
+
+  // wire per-task quality segs
+  document.querySelectorAll('.per-task-quality .ptq-seg').forEach(seg=>{
+    seg.querySelectorAll('button').forEach(b=>{
+      b.onclick = ()=>{
+        seg.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+        b.classList.add('active');
+      };
+    });
+  });
+}
+
+function togglePerTaskQuality(){
+  const on = document.getElementById('perTaskQualityToggle').checked;
+  document.getElementById('perTaskQualityBox').style.display = on?'':'none';
+}
+
+/* Distribute the bundle's actual minutes across children proportionally to adjusted minutes.
+   Guarantee that the sum of allocated child minutes == bundle actual minutes. */
+function distributeBundleActualTime(bundle){
+  const totalAdj = bundle.selectedTasks.reduce((s,t)=>s+(t.adjustedMinutes||0), 0);
+  const bundleAct = bundle.actualMinutes || 0;
+  const n = bundle.selectedTasks.length;
+  if(n===0) return [];
+
+  const allocs = [];
+  let runningSum = 0;
+  for(let i=0;i<n;i++){
+    const st = bundle.selectedTasks[i];
+    let alloc;
+    if(totalAdj > 0){
+      alloc = bundleAct * (st.adjustedMinutes / totalAdj);
+    } else {
+      alloc = bundleAct / n;
+    }
+    // Round all but last to 2 decimals, last absorbs rounding to keep total exact
+    if(i < n-1){
+      alloc = Math.round(alloc*100)/100;
+      runningSum += alloc;
+      allocs.push(alloc);
+    } else {
+      const remainder = Math.round((bundleAct - runningSum)*100)/100;
+      allocs.push(remainder);
+    }
+  }
+  return allocs;
+}
+
+function createBundleChildCompletedTasks(bundle, perTaskQualities){
+  const cj = appState.currentJob;
+  const allocs = distributeBundleActualTime(bundle);
+  const bundleQuality = bundle.quality || 'Approved';
+  const usingPerTask = !!perTaskQualities;
+
+  const children = bundle.selectedTasks.map((st, i)=>{
+    const allocActual = allocs[i] || 0;
+    const childQuality = usingPerTask ? (perTaskQualities[i] || bundleQuality) : bundleQuality;
+    const childAdj = st.adjustedMinutes || 0;
+    const ratio = childAdj > 0 ? allocActual/childAdj : null;
+    const ratioPct = ratio!=null ? ratio*100 : null;
+    return {
+      id: uid('t'),
+      jobId: cj.id,
+      bundleId: bundle.bundleId,
+      isBundleChild: true,
+      bundleTaskCount: bundle.bundleTaskCount,
+      bundleName: bundle.taskName,
+      workerId: bundle.workerId,
+      workerName: bundle.workerName,
+      serviceId: bundle.serviceId,
+      serviceName: bundle.serviceName,
+      sectionId: bundle.sectionId,
+      sectionName: bundle.sectionName,
+      taskId: st.taskId,
+      taskName: st.taskName,
+      isCustomTask: !!st.isCustomTask,
+      customReason: st.customReason||'',
+      referenceMinutes: st.referenceMinutes,
+      dirtLevelId: st.dirtLevelId,
+      dirtLevelName: st.dirtLevelName,
+      dirtMultiplier: st.dirtMultiplier,
+      adjustedMinutes: st.adjustedMinutes,
+      // For child tasks the "timer" times don't exist on their own — they inherit from bundle
+      startTime: bundle.startTime,
+      endTime: bundle.endTime,
+      pausedDurationMs: bundle.pausedDurationMs,
+      pausedAt: null,
+      allocatedActualMinutes: allocActual,
+      actualMinutes: allocActual,
+      quality: childQuality,
+      evaluationLabel: getEvaluationLabel(ratioPct, childQuality).label,
+      performanceRatio: ratio,
+      notes: bundle.notes ? '(Part of bundle) '+bundle.notes : '(Part of bundle)',
+      delayReason: bundle.delayReason || '',
+      deviations: [],
+      reworkOfTaskId: bundle.reworkOfBundleId || null,
+      createdAt: bundle.createdAt,
+      updatedAt: Date.now()
+    };
+  });
+  return children;
+}
+
+function confirmStopBundle(id, delayRequired){
+  const t = findActiveTask(id); if(!t || t.type!=='bundle') return;
+  const cj = appState.currentJob;
+
+  // close pause if still paused
+  if(t.pausedAt){
+    t.pausedDurationMs = (t.pausedDurationMs||0) + (Date.now()-t.pausedAt);
+    t.pausedAt = null;
+  }
+  t.endTime = Date.now();
+  t.actualMinutes = calcActualMinutes(t.startTime, t.endTime, t.pausedDurationMs);
+  t.performanceRatio = calcPerfRatio(t.actualMinutes, t.adjustedMinutes);
+
+  const bundleQuality = document.querySelector('#stop-quality button.active')?.dataset.v || 'Approved';
+  const notes = document.getElementById('stop-notes').value.trim();
+  const delay = document.getElementById('stop-delay').value;
+
+  if(delayRequired && !delay){ toast('Delay reason is required','red'); return; }
+
+  t.quality = bundleQuality;
+  t.notes = notes;
+  t.delayReason = delay;
+  const ratioPct = t.performanceRatio!=null ? t.performanceRatio*100 : null;
+  t.evaluationLabel = getEvaluationLabel(ratioPct, bundleQuality).label;
+  t.updatedAt = Date.now();
+
+  // Per-task quality (if enabled)
+  let perTaskQualities = null;
+  const usingPerTask = document.getElementById('perTaskQualityToggle')?.checked;
+  if(usingPerTask){
+    perTaskQualities = [];
+    document.querySelectorAll('.per-task-quality .ptq-row').forEach((row,idx)=>{
+      const v = row.querySelector('.ptq-seg button.active')?.dataset.v || bundleQuality;
+      perTaskQualities[idx] = v;
+    });
+  }
+
+  // Create child completed tasks (these are the official counted records)
+  const children = createBundleChildCompletedTasks(t, perTaskQualities);
+
+  // Move bundle from active -> completedBundles (display/traceability)
+  cj.activeTasks = cj.activeTasks.filter(x=>x.id!==id);
+  cj.completedBundles = cj.completedBundles || [];
+  cj.completedBundles.push(t);
+
+  // Push children into completedTasks for totals/analytics
+  cj.completedTasks.push(...children);
+
+  // Optional rework BUNDLE
+  if(bundleQuality !== 'Approved'){
+    const create = document.getElementById('reworkCreate')?.checked;
+    if(create){
+      const wid = document.getElementById('reworkWorker').value;
+      const rmin = parseFloat(document.getElementById('reworkMin').value)||0;
+      if(rmin>0){
+        const w = cj.workers.find(x=>x.id===wid);
+        const dirt = appState.dirtLevels.find(d=>d.id===t.dirtLevelId) || appState.dirtLevels.find(d=>d.id===cj.generalDirtLevelId);
+        // Distribute the new reference proportionally across the same child task structure
+        const origRefTotal = t.selectedTasks.reduce((s,x)=>s+(x.referenceMinutes||0),0) || 1;
+        const reworkSelected = t.selectedTasks.map(st=>{
+          const childRef = origRefTotal>0 ? rmin*(st.referenceMinutes/origRefTotal) : rmin/t.selectedTasks.length;
+          return {
+            taskId: st.taskId,
+            taskName: 'Rework: '+st.taskName,
+            referenceMinutes: Math.round(childRef*10)/10,
+            dirtLevelId: dirt?.id,
+            dirtLevelName: dirt?dirt.swedish:'',
+            dirtMultiplier: 1,   // rework time is already a discounted estimate
+            adjustedMinutes: Math.round(childRef*10)/10,
+            isCustomTask: true,
+            customReason: 'Rework of bundle '+t.bundleId
+          };
+        });
+        const reworkBundle = {
+          id: uid('t'),
+          type: 'bundle',
+          bundleId: uid('b'),
+          jobId: cj.id,
+          workerId: w.id,
+          workerName: w.name,
+          serviceId: cj.serviceId,
+          serviceName: cj.serviceName,
+          sectionId: t.sectionId,
+          sectionName: t.sectionName,
+          selectedTasks: reworkSelected,
+          bundleTaskCount: reworkSelected.length,
+          taskName: 'Rework bundle: '+reworkSelected.length+' tasks',
+          referenceMinutes: rmin,
+          dirtLevelId: dirt?.id,
+          dirtLevelName: dirt?dirt.swedish:'',
+          dirtMultiplier: 1,
+          adjustedMinutes: rmin,
+          startTime: Date.now(), endTime: null,
+          pausedDurationMs:0, pausedAt:null, actualMinutes:null,
+          quality:null, evaluationLabel:null, performanceRatio:null,
+          notes:'Rework of '+t.taskName, delayReason:'', deviations:[],
+          reworkOfBundleId: t.bundleId,
+          createdAt: Date.now(), updatedAt: Date.now()
+        };
+        cj.activeTasks.push(reworkBundle);
+        toast('Rework bundle started','green');
+      }
+    }
+  }
+
+  save();
+  closeModal();
+  renderActive();
+  toast('Bundle completed: '+t.bundleTaskCount+' tasks','green');
+}
+
+/* ---- DEVIATION modal ---- */
+
+function openDeviationModal(taskId){
+  const cj = appState.currentJob;
+  if(!cj){ toast('No active job','red'); return; }
+  const html = `
+    <div class="grab"></div>
+    <h3>Add deviation</h3>
+    <label>Title</label>
+    <input type="text" id="dv-title" placeholder="Short title (e.g. Customer arrived late)" />
+    <label>Area</label>
+    <input type="text" id="dv-area" placeholder="Kitchen / Bathroom / general..." />
+    <label>Worker related?</label>
+    <div class="seg" id="dv-related"><button data-v="No" class="active">No</button><button data-v="Yes">Yes</button></div>
+    <label>Description</label>
+    <textarea id="dv-desc"></textarea>
+    <label>Did it affect time?</label>
+    <div class="seg" id="dv-affected"><button data-v="No" class="active">No</button><button data-v="Yes">Yes</button></div>
+    <label>Estimated lost minutes</label>
+    <input type="number" id="dv-lost" placeholder="0" min="0" />
+    <label>Photo / CompanyCam link (optional)</label>
+    <input type="text" id="dv-photo" placeholder="https://..." />
+    <label>Severity</label>
+    <div class="seg" id="dv-sev">
+      <button data-v="Info" class="active">Info</button>
+      <button data-v="Minor">Minor</button>
+      <button data-v="Important">Important</button>
+      <button data-v="Critical">Critical</button>
+    </div>
+    <div class="btn-row" style="margin-top:14px">
+      <button class="btn alt" onclick="closeModal()">Cancel</button>
+      <button class="btn warn" onclick="saveDeviation('${taskId||''}')">Save deviation</button>
+    </div>
+  `;
+  openModal(html);
+  // wire segs
+  ['dv-related','dv-affected','dv-sev'].forEach(grpId=>{
+    document.querySelectorAll('#'+grpId+' button').forEach(b=>{
+      b.onclick=()=>{ document.querySelectorAll('#'+grpId+' button').forEach(x=>x.classList.remove('active')); b.classList.add('active');};
+    });
+  });
+}
+function saveDeviation(taskId){
+  const cj=appState.currentJob;
+  const dv = {
+    id: uid('dv'),
+    taskId: taskId||null,
+    title: document.getElementById('dv-title').value.trim()||'Avvikelse',
+    area:  document.getElementById('dv-area').value.trim(),
+    workerRelated: document.querySelector('#dv-related .active').dataset.v,
+    description: document.getElementById('dv-desc').value.trim(),
+    affectedTime: document.querySelector('#dv-affected .active').dataset.v,
+    lostMinutes: parseFloat(document.getElementById('dv-lost').value)||0,
+    photoLink: document.getElementById('dv-photo').value.trim(),
+    severity: document.querySelector('#dv-sev .active').dataset.v,
+    createdAt: Date.now()
+  };
+  cj.deviations = cj.deviations||[];
+  cj.deviations.push(dv);
+  if(taskId){
+    const t = findActiveTask(taskId) || cj.completedTasks.find(x=>x.id===taskId);
+    if(t){ t.deviations=t.deviations||[]; t.deviations.push(dv.id); }
+  }
+  save(); closeModal(); renderActive();
+  toast('Deviation saved','green');
+}
+
+/* ====================================================================
+   SUMMARY VIEW
+   ==================================================================== */
+
+function renderSummary(){
+  const cj = appState.currentJob;
+  const wrap = document.getElementById('summaryContent');
+
+  // Allow viewing latest archived job if no current
+  let job = cj;
+  let isArchived = false;
+  if(!job && appState.savedJobs.length){
+    job = appState.savedJobs[appState.savedJobs.length-1];
+    isArchived = true;
+  }
+  if(!job){
+    wrap.innerHTML = '<div class="empty"><span class="ic">📑</span>No job to summarize.<br>Start a job from the Job tab.</div>';
+    return;
+  }
+
+  const completed = job.completedTasks||[];
+  const totRef = completed.reduce((s,t)=>s+(t.referenceMinutes||0),0);
+  const totAdj = completed.reduce((s,t)=>s+(t.adjustedMinutes||0),0);
+  const totAct = completed.reduce((s,t)=>s+(t.actualMinutes||0),0);
+  const diff = totAct - totAdj;
+  const diffPct = totAdj>0? (diff/totAdj)*100 : 0;
+  const grpCls = diffPct>15?'red':diffPct>0?'yellow':'green';
+
+  const jobElapsed = job.startedAt ? ((job.endedAt||Date.now())-job.startedAt)/60000 : 0;
+
+  // ---- A. JOB block ----
+  let html = `
+    ${isArchived?'<div class="chip yellow" style="margin-bottom:8px">📦 Showing latest archived job</div>':''}
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:800;color:var(--navy);font-size:16px">${escapeHtml(job.bookingId)}</div>
+          <div style="font-size:13px;color:var(--muted)">${escapeHtml(job.date)} · ${escapeHtml(job.serviceName)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Ansvarig: ${escapeHtml(job.leaderName||'—')}</div>
+        </div>
+        <span class="chip ${grpCls}">${diff>=0?'+':''}${Math.round(diff)} min (${diff>=0?'+':''}${Math.round(diffPct)}%)</span>
+      </div>
+      <div class="kpi-grid" style="margin-top:10px">
+        <div class="kpi"><div class="v">${fmtMin(totRef)}</div><div class="l">Total reference</div></div>
+        <div class="kpi"><div class="v">${fmtMin(totAdj)}</div><div class="l">Total adjusted</div></div>
+        <div class="kpi ${grpCls}"><div class="v">${fmtMin(totAct)}</div><div class="l">Total actual</div></div>
+        <div class="kpi"><div class="v">${fmtHM(jobElapsed)}</div><div class="l">Job elapsed</div></div>
+      </div>
+    </div>
+  `;
+
+  // ---- B. WORKER summary ----
+  html += '<div class="section-title">👥 Resultat per medarbetare</div>';
+  const byWorker = {};
+  completed.forEach(t=>{
+    if(!byWorker[t.workerId]) byWorker[t.workerId]={name:t.workerName, tasks:[]};
+    byWorker[t.workerId].tasks.push(t);
+  });
+  const workerKeys = Object.keys(byWorker);
+  if(!workerKeys.length){
+    html += '<div class="empty">No completed tasks yet</div>';
+  } else {
+    workerKeys.forEach(wid=>{
+      const w = byWorker[wid];
+      const ws = computeWorkerSummary(w.tasks);
+      const score = workerScore(w.tasks);
+      html += `<div class="ws-block">
+        <h4>
+          <span>${escapeHtml(w.name)}</span>
+          <span class="chip ${score>=85?'green':score>=70?'yellow':'red'}">Score ${score}</span>
+        </h4>
+        <div class="ws-mini">
+          <div><b>${ws.count}</b>tasks</div>
+          <div><b>${fmtMin(ws.act)}</b>actual</div>
+          <div><b>${fmtMin(ws.adj)}</b>adjusted</div>
+          <div><b>${ws.avgRatio!=null?Math.round(ws.avgRatio*100)+'%':'—'}</b>avg ratio</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:12px">
+          <span class="chip green">✓ ${ws.approved}</span>
+          ${ws.corrections?'<span class="chip yellow">⚠ '+ws.corrections+'</span>':''}
+          ${ws.rejected?'<span class="chip red">✕ '+ws.rejected+'</span>':''}
+          ${ws.rework?'<span class="chip blue">↻ '+ws.rework+' rework</span>':''}
+          ${ws.bundleCount?'<span class="chip navy">📦 '+ws.bundleCount+' bundle'+(ws.bundleCount>1?'s':'')+'</span>':''}
+        </div>
+        ${ws.delayReasons.length?'<div style="font-size:12px;color:var(--muted);margin-top:6px">Delays: '+ws.delayReasons.map(escapeHtml).join(', ')+'</div>':''}
+      </div>`;
+    });
+  }
+
+  // ---- C. TASK list (bundle-aware) ----
+  html += '<div class="section-title">📋 Utförda uppgifter</div>';
+  if(!completed.length){
+    html += '<div class="empty">No completed tasks yet</div>';
+  } else {
+    // Group children by bundleId; keep singletons separate
+    const bundleMap = {};   // bundleId -> [child tasks]
+    const singletons = [];
+    completed.forEach(t=>{
+      if(t.isBundleChild && t.bundleId){
+        (bundleMap[t.bundleId] = bundleMap[t.bundleId] || []).push(t);
+      } else {
+        singletons.push(t);
+      }
+    });
+    const bundleParents = job.completedBundles || [];
+    // Build display items in reverse chronological order using updatedAt for parents/singletons
+    const items = [
+      ...bundleParents.map(b=>({type:'bundle', parent:b, children:bundleMap[b.bundleId]||[], time:b.updatedAt||b.endTime||0})),
+      ...singletons.map(t=>({type:'task', task:t, time:t.updatedAt||t.endTime||0}))
+    ].sort((a,b)=>b.time-a.time);
+
+    html += items.map(it=>{
+      if(it.type==='bundle'){
+        const b = it.parent;
+        const kids = it.children;
+        // Use parent's actualMinutes (true bundle timer) for ratio
+        const ratio = b.performanceRatio!=null ? Math.round(b.performanceRatio*100) : null;
+        const ev = getEvaluationLabel(ratio, b.quality);
+        return `<div class="bundle-summary-card">
+          <div class="bsc-head">
+            <div style="min-width:0;flex:1">
+              <div class="bsc-title">📦 ${escapeHtml(b.taskName)}${b.reworkOfBundleId?' <span class="chip blue" style="margin-left:4px">rework</span>':''}</div>
+              <div class="bsc-meta">${escapeHtml(b.workerName)} · ${escapeHtml(b.sectionName)} · ${b.bundleTaskCount} tasks</div>
+            </div>
+            <span class="chip ${ev.cls}" style="white-space:nowrap">${ev.label}</span>
+          </div>
+          <div class="bsc-body">
+            <div class="bsc-stats">
+              <span>Ref: <b>${fmtMin(b.referenceMinutes)}</b></span>
+              <span>Adj: <b>${fmtMin(b.adjustedMinutes)}</b> (×${b.dirtMultiplier})</span>
+              <span>Actual: <b>${fmtMin(b.actualMinutes)}</b></span>
+              ${ratio!=null?'<span>Ratio: <b>'+ratio+'%</b></span>':''}
+              <span>Quality: <b>${escapeHtml(b.quality||'—')}</b></span>
+            </div>
+            ${b.notes?'<div style="font-size:12px;color:var(--muted);margin-top:4px">📝 '+escapeHtml(b.notes)+'</div>':''}
+            ${b.delayReason?'<div style="font-size:12px;color:var(--red);margin-top:4px">⏱ Delay: '+escapeHtml(b.delayReason)+'</div>':''}
+            <div class="bsc-children">
+              ${kids.map(c=>{
+                const cr = c.performanceRatio!=null ? Math.round(c.performanceRatio*100) : null;
+                return `<div class="bsc-child-row">
+                  <span class="bcr-name">${escapeHtml(c.taskName)}${c.isCustomTask?' <span style="color:var(--orange);font-size:10px">[custom]</span>':''}</span>
+                  <span class="bcr-nums">Ref ${Math.round(c.referenceMinutes||0)} / Adj ${Math.round(c.adjustedMinutes||0)} / Alloc ${fmtMin(c.actualMinutes)} ${cr!=null?'· '+cr+'%':''} · ${escapeHtml(c.quality||'—')}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>`;
+      } else {
+        const t = it.task;
+        const ratio = t.performanceRatio!=null ? Math.round(t.performanceRatio*100) : null;
+        const ev = getEvaluationLabel(ratio, t.quality);
+        return `<div class="task-card">
+          <div class="tc-top">
+            <div style="min-width:0">
+              <div class="tc-name">${escapeHtml(t.taskName)}${t.reworkOfTaskId?' <span class="chip blue">rework</span>':''}</div>
+              <div class="tc-meta">${escapeHtml(t.workerName)} · ${escapeHtml(t.sectionName)}</div>
+            </div>
+            <span class="chip ${ev.cls}">${ev.label}</span>
+          </div>
+          <div class="tc-stats">
+            <span>Ref: <b>${fmtMin(t.referenceMinutes)}</b></span>
+            <span>Adj: <b>${fmtMin(t.adjustedMinutes)}</b> (×${t.dirtMultiplier})</span>
+            <span>Actual: <b>${fmtMin(t.actualMinutes)}</b></span>
+            ${ratio!=null?'<span>Ratio: <b>'+ratio+'%</b></span>':''}
+          </div>
+          ${t.notes?'<div style="margin-top:6px;font-size:12px;color:var(--muted)">📝 '+escapeHtml(t.notes)+'</div>':''}
+          ${t.delayReason?'<div style="margin-top:4px;font-size:12px;color:var(--red)">⏱ Delay: '+escapeHtml(t.delayReason)+'</div>':''}
+        </div>`;
+      }
+    }).join('');
+  }
+
+  // ---- D. GROUP evaluation ----
+  if(completed.length){
+    const grp = computeGroupEvaluation(completed);
+    html += `<div class="section-title">🏆 Gruppbedömning</div>
+      <div class="card">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+          <div><b>Group performance:</b><br>${grp.avgPerf!=null?Math.round(grp.avgPerf*100)+'%':'—'}</div>
+          <div><b>Group quality:</b><br>${grp.qualityScore} / 100</div>
+          <div><b>Best for time:</b><br>${grp.bestTime||'—'}</div>
+          <div><b>Best for quality:</b><br>${grp.bestQuality||'—'}</div>
+          <div><b>Bottleneck:</b><br>${grp.bottleneck||'—'}</div>
+          <div><b>Needs review:</b><br>${grp.needsReview||'—'}</div>
+        </div>
+        ${grp.recommendations.length? '<div style="margin-top:10px"><b style="font-size:13px;color:var(--navy)">Rekommendationer:</b><ul style="font-size:13px;padding-left:18px;margin:6px 0 0">'+grp.recommendations.map(r=>'<li>'+escapeHtml(r)+'</li>').join('')+'</ul></div>':''}
+      </div>`;
+  }
+
+  // ---- E. Deviations ----
+  if(job.deviations && job.deviations.length){
+    html += '<div class="section-title">⚠ Avvikelser och noteringar</div>';
+    html += job.deviations.map(dv=>`
+      <div class="task-card">
+        <div class="tc-top">
+          <div><div class="tc-name">${escapeHtml(dv.title)}</div>
+          <div class="tc-meta">${escapeHtml(dv.area||'—')}${dv.lostMinutes?' · −'+dv.lostMinutes+' min':''}</div></div>
+          <span class="chip ${dv.severity==='Critical'?'red':dv.severity==='Important'?'yellow':'blue'}">${escapeHtml(dv.severity)}</span>
+        </div>
+        ${dv.description?'<div style="margin-top:4px;font-size:13px">'+escapeHtml(dv.description)+'</div>':''}
+      </div>`).join('');
+  }
+
+  wrap.innerHTML = html;
+}
+
+function computeWorkerSummary(tasks){
+  const ref = tasks.reduce((s,t)=>s+(t.referenceMinutes||0),0);
+  const adj = tasks.reduce((s,t)=>s+(t.adjustedMinutes||0),0);
+  const act = tasks.reduce((s,t)=>s+(t.actualMinutes||0),0);
+  const ratios = tasks.filter(t=>t.performanceRatio!=null).map(t=>t.performanceRatio);
+  const avgRatio = ratios.length? ratios.reduce((a,b)=>a+b,0)/ratios.length : null;
+  // Count distinct bundles this worker was in
+  const bundleIds = new Set(tasks.filter(t=>t.isBundleChild && t.bundleId).map(t=>t.bundleId));
+  return {
+    count: tasks.length,
+    bundleCount: bundleIds.size,
+    ref, adj, act,
+    diff: act-adj,
+    avgRatio,
+    approved:    tasks.filter(t=>t.quality==='Approved').length,
+    corrections: tasks.filter(t=>t.quality==='Needs correction').length,
+    rejected:    tasks.filter(t=>t.quality==='Rejected').length,
+    rework:      tasks.filter(t=>t.reworkOfTaskId).length,
+    delayReasons: [...new Set(tasks.map(t=>t.delayReason).filter(Boolean))],
+  };
+}
+
+function computeGroupEvaluation(tasks){
+  const ratios = tasks.filter(t=>t.performanceRatio!=null).map(t=>t.performanceRatio);
+  const avgPerf = ratios.length? ratios.reduce((a,b)=>a+b,0)/ratios.length : null;
+  const qScores = tasks.map(t=>qualityScore(t.quality));
+  const qualityScoreAvg = Math.round(qScores.reduce((a,b)=>a+b,0)/(qScores.length||1));
+
+  // by worker stats
+  const byW = {};
+  tasks.forEach(t=>{
+    if(!byW[t.workerId]) byW[t.workerId] = {name:t.workerName, ratios:[], qs:[], slow:0, rejs:0};
+    if(t.performanceRatio!=null) byW[t.workerId].ratios.push(t.performanceRatio);
+    byW[t.workerId].qs.push(qualityScore(t.quality));
+    if(t.performanceRatio!=null && t.performanceRatio>1.3) byW[t.workerId].slow++;
+    if(t.quality==='Rejected') byW[t.workerId].rejs++;
+  });
+
+  let bestTime='—', bestQ='—', bottleneck='—', needsReview='—';
+  let bestT=Infinity, bestQv=-1, worstT=-Infinity, worstQv=Infinity;
+  Object.values(byW).forEach(w=>{
+    const avgR = w.ratios.length? w.ratios.reduce((a,b)=>a+b,0)/w.ratios.length : null;
+    const avgQ = w.qs.length? w.qs.reduce((a,b)=>a+b,0)/w.qs.length : 0;
+    if(avgR!=null && avgR<bestT){ bestT=avgR; bestTime=w.name+' ('+Math.round(avgR*100)+'%)'; }
+    if(avgQ>bestQv){ bestQv=avgQ; bestQ=w.name+' ('+Math.round(avgQ)+')'; }
+    if(avgR!=null && avgR>worstT){ worstT=avgR; bottleneck=w.name+' ('+Math.round(avgR*100)+'%)'; }
+    if(avgQ<worstQv){ worstQv=avgQ; needsReview=w.name+' (Q '+Math.round(avgQ)+')'; }
+  });
+
+  // rule-based recommendations
+  const recs = [];
+  Object.values(byW).forEach(w=>{
+    const avgR = w.ratios.length? w.ratios.reduce((a,b)=>a+b,0)/w.ratios.length : null;
+    const avgQ = w.qs.length? w.qs.reduce((a,b)=>a+b,0)/w.qs.length : 0;
+    if(avgR!=null && avgR>1.3) recs.push(w.name+' shows clear time delays — review reference times or assign easier tasks to start.');
+    if(avgQ<70) recs.push(w.name+' has low quality score — consider quality-focused training and pair with experienced worker.');
+    if(w.rejs>=2) recs.push(w.name+' has multiple rejections — quality coaching recommended.');
+  });
+  // task-level recurring problems
+  const taskPerf = {};
+  tasks.forEach(t=>{
+    if(t.performanceRatio==null) return;
+    if(!taskPerf[t.taskName]) taskPerf[t.taskName]=[];
+    taskPerf[t.taskName].push(t.performanceRatio);
+  });
+  Object.entries(taskPerf).forEach(([name, arr])=>{
+    if(arr.length>=2){
+      const avg = arr.reduce((a,b)=>a+b,0)/arr.length;
+      if(avg>1.2) recs.push('Task "'+name+'" consistently exceeds adjusted time — review reference time or method.');
+    }
+  });
+
+  return {avgPerf, qualityScore:qualityScoreAvg, bestTime, bestQuality:bestQ, bottleneck, needsReview, recommendations:recs};
+}
+
+/* ====================================================================
+   ANALYTICS VIEW (across all saved jobs)
+   ==================================================================== */
+
+function renderAnalytics(){
+  const wrap = document.getElementById('analyticsContent');
+  const allTasks = [];
+  appState.savedJobs.forEach(j=>j.completedTasks.forEach(t=>allTasks.push({...t, _jobDate:j.date})));
+
+  if(!allTasks.length){
+    wrap.innerHTML = '<div class="empty"><span class="ic">📈</span>No archived job data yet.<br>Complete and archive at least one job to see analytics.</div>';
+    return;
+  }
+
+  // 1. Per-worker stats
+  const byW = {};
+  allTasks.forEach(t=>{
+    if(!byW[t.workerId]) byW[t.workerId] = {name:t.workerName, tasks:[]};
+    byW[t.workerId].tasks.push(t);
+  });
+
+  let html = '<div class="section-title">👤 Worker performance</div>';
+  Object.values(byW).forEach(w=>{
+    const s = computeWorkerSummary(w.tasks);
+    const score = workerScore(w.tasks);
+    // fastest/slowest task types
+    const byTask = {};
+    w.tasks.forEach(t=>{ if(t.performanceRatio==null) return;
+      if(!byTask[t.taskName]) byTask[t.taskName]=[];
+      byTask[t.taskName].push(t.performanceRatio);
+    });
+    const taskAvg = Object.entries(byTask).map(([n,arr])=>({n, avg:arr.reduce((a,b)=>a+b,0)/arr.length}));
+    taskAvg.sort((a,b)=>a.avg-b.avg);
+    const fastest = taskAvg.slice(0,2).map(t=>t.n+' ('+Math.round(t.avg*100)+'%)').join(', ');
+    const slowest = taskAvg.slice(-2).reverse().map(t=>t.n+' ('+Math.round(t.avg*100)+'%)').join(', ');
+    const delays = [...new Set(w.tasks.map(t=>t.delayReason).filter(Boolean))];
+
+    html += `<div class="ws-block">
+      <h4><span>${escapeHtml(w.name)}</span><span class="chip ${score>=85?'green':score>=70?'yellow':'red'}">Score ${score}</span></h4>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${s.count} tasks · avg ratio ${s.avgRatio!=null?Math.round(s.avgRatio*100)+'%':'—'}</div>
+      <div style="font-size:13px"><b>Fastest:</b> ${fastest||'—'}</div>
+      <div style="font-size:13px"><b>Slowest:</b> ${slowest||'—'}</div>
+      ${delays.length?'<div style="font-size:12px;color:var(--muted);margin-top:4px"><b>Common delays:</b> '+delays.map(escapeHtml).join(', ')+'</div>':''}
+    </div>`;
+  });
+
+  // 2. Per-task stats
+  html += '<div class="section-title">📋 Task performance</div>';
+  const byTask = {};
+  allTasks.forEach(t=>{
+    if(!byTask[t.taskName]) byTask[t.taskName]={ratios:[], adj:0, act:0, byWorker:{}};
+    if(t.performanceRatio!=null) byTask[t.taskName].ratios.push(t.performanceRatio);
+    byTask[t.taskName].adj += t.adjustedMinutes||0;
+    byTask[t.taskName].act += t.actualMinutes||0;
+    if(!byTask[t.taskName].byWorker[t.workerName]) byTask[t.taskName].byWorker[t.workerName]=[];
+    if(t.performanceRatio!=null) byTask[t.taskName].byWorker[t.workerName].push(t.performanceRatio);
+  });
+  Object.entries(byTask).slice(0,15).forEach(([n,d])=>{
+    const avg = d.ratios.length? d.ratios.reduce((a,b)=>a+b,0)/d.ratios.length : null;
+    const cls = avg==null?'blue':avg>1.2?'red':avg>1.0?'yellow':'green';
+    // best worker for this task
+    const wlist = Object.entries(d.byWorker).map(([wn,arr])=>({wn, avg:arr.reduce((a,b)=>a+b,0)/arr.length}));
+    wlist.sort((a,b)=>a.avg-b.avg);
+    html += `<div class="task-card">
+      <div class="tc-top">
+        <div><div class="tc-name">${escapeHtml(n)}</div>
+        <div class="tc-meta">${d.ratios.length} runs · adj ${fmtMin(d.adj)} → act ${fmtMin(d.act)}</div></div>
+        <span class="chip ${cls}">${avg!=null?Math.round(avg*100)+'%':'—'}</span>
+      </div>
+      ${wlist[0]?'<div style="font-size:12px;margin-top:4px"><b>Best:</b> '+escapeHtml(wlist[0].wn)+' ('+Math.round(wlist[0].avg*100)+'%)':''}
+      ${wlist.length>1?' · <b>Struggles:</b> '+escapeHtml(wlist[wlist.length-1].wn)+' ('+Math.round(wlist[wlist.length-1].avg*100)+'%)':''}
+      ${wlist[0]?'</div>':''}
+    </div>`;
+  });
+
+  // 3. Recommendations
+  html += '<div class="section-title">🎯 Recommendations</div>';
+  const recs = generateRecommendations(allTasks, byW);
+  if(!recs.length){
+    html += '<div class="card tight" style="font-size:13px;color:var(--muted)">No specific recommendations — performance looks balanced.</div>';
+  } else {
+    html += '<div class="card">'+recs.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">${escapeHtml(r)}</div>`).join('').replace(/border-bottom:1px solid var\(--line\)(?=[^;]*$)/,'')+'</div>';
+  }
+
+  // 4. Training mode for trainees
+  const trainees = appState.workers.filter(w=>w.role==='Trainee'||w.level==='Under training'||w.level==='New');
+  if(trainees.length){
+    html += '<div class="section-title">🎓 Training mode</div>';
+    trainees.forEach(tr=>{
+      const wTasks = allTasks.filter(t=>t.workerName===tr.name);
+      if(!wTasks.length) return;
+      const byT = {};
+      wTasks.forEach(t=>{ if(t.performanceRatio==null) return;
+        if(!byT[t.taskName]) byT[t.taskName]=[];
+        byT[t.taskName].push(t.performanceRatio);
+      });
+      const arr = Object.entries(byT).map(([n,r])=>({n, avg:r.reduce((a,b)=>a+b,0)/r.length}));
+      arr.sort((a,b)=>a.avg-b.avg);
+      const suitable = arr.filter(x=>x.avg<=1.15).slice(0,3).map(x=>x.n);
+      const avoid = arr.filter(x=>x.avg>1.4).slice(0,3).map(x=>x.n);
+      html += `<div class="ws-block">
+        <h4>${escapeHtml(tr.name)} <span class="chip yellow">Trainee</span></h4>
+        ${suitable.length?'<div style="font-size:13px"><b>Suitable tasks:</b> '+suitable.map(escapeHtml).join(', ')+'</div>':''}
+        ${avoid.length?'<div style="font-size:13px;margin-top:4px"><b>Avoid for now:</b> '+avoid.map(escapeHtml).join(', ')+'</div>':''}
+      </div>`;
+    });
+  }
+
+  wrap.innerHTML = html;
+}
+
+function generateRecommendations(allTasks, byW){
+  const recs = [];
+  // worker-level
+  Object.values(byW).forEach(w=>{
+    const ratios = w.tasks.filter(t=>t.performanceRatio!=null).map(t=>t.performanceRatio);
+    if(!ratios.length) return;
+    const avg = ratios.reduce((a,b)=>a+b,0)/ratios.length;
+    const qs = w.tasks.map(t=>qualityScore(t.quality));
+    const avgQ = qs.reduce((a,b)=>a+b,0)/qs.length;
+    if(avg<0.95 && avgQ>=85) recs.push(w.name+' is fast and consistent — strong candidate for leader / time-pressured jobs.');
+    if(avg>1.25) recs.push(w.name+' frequently exceeds adjusted time — review whether tasks fit their skill level.');
+    if(avgQ<70) recs.push(w.name+' has repeated quality issues — schedule quality coaching session.');
+  });
+  // task-level
+  const byTask = {};
+  allTasks.forEach(t=>{
+    if(t.performanceRatio==null) return;
+    if(!byTask[t.taskName]) byTask[t.taskName]=[];
+    byTask[t.taskName].push(t.performanceRatio);
+  });
+  Object.entries(byTask).forEach(([n,arr])=>{
+    if(arr.length>=3){
+      const avg = arr.reduce((a,b)=>a+b,0)/arr.length;
+      if(avg>1.2) recs.push('Task "'+n+'" exceeds adjusted time across multiple jobs — review reference time, method, or training.');
+    }
+  });
+
+  // ---- bundle-level analysis ----
+  // Group by (section + sorted task names) signature -> bundle ratios
+  const bundleParents = [];
+  (appState.savedJobs||[]).forEach(j=>{
+    (j.completedBundles||[]).forEach(b=>bundleParents.push(b));
+  });
+  if(bundleParents.length){
+    const bySig = {};
+    bundleParents.forEach(b=>{
+      if(b.performanceRatio==null) return;
+      const names = (b.selectedTasks||[]).map(s=>s.taskName).sort().join(' + ');
+      const sig = b.sectionName + ' | ' + names;
+      if(!bySig[sig]) bySig[sig] = {section:b.sectionName, ratios:[], count:0};
+      bySig[sig].ratios.push(b.performanceRatio);
+      bySig[sig].count++;
+    });
+    Object.entries(bySig).forEach(([sig, d])=>{
+      if(d.count>=2){
+        const avg = d.ratios.reduce((a,b)=>a+b,0)/d.ratios.length;
+        if(avg>1.20){
+          recs.push('Review grouping of tasks in '+d.section+'. This bundle often exceeds adjusted time ('+Math.round(avg*100)+'% avg over '+d.count+' runs). Consider splitting heavy tasks such as Spis + ugn and Fläkt into separate timers when quality risk is high.');
+        }
+      }
+    });
+  }
+
+  return recs;
+}
+
+/* ====================================================================
+   SETTINGS VIEW
+   ==================================================================== */
+
+function renderSettings(){
+  // Company
+  document.getElementById('set-company').value = appState.settings.company||'';
+  document.getElementById('set-logoText').value = appState.settings.logoText||'';
+  document.getElementById('set-reportTitle').value = appState.settings.reportTitle||'';
+  document.getElementById('set-reportFooter').value = appState.settings.reportFooter||'';
+  document.getElementById('set-pin').value = appState.settings.pin||'';
+
+  // Workers list (master)
+  document.getElementById('set-workers').innerHTML = appState.workers.map(w=>`
+    <div class="li">
+      <div class="grow">
+        <div class="t">${escapeHtml(w.name)}</div>
+        <div class="s">${escapeHtml(w.role)} · ${escapeHtml(w.level)}</div>
+      </div>
+      <button class="btn xs alt" onclick="editMasterWorker('${w.id}')">✎</button>
+      <button class="btn xs red" onclick="removeMasterWorker('${w.id}')">✕</button>
+    </div>
+  `).join('') || '<div class="empty" style="padding:14px">No workers yet</div>';
+
+  // Services
+  const ssel = document.getElementById('set-serviceSelect');
+  ssel.innerHTML = appState.services.map(s=>`<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+  renderServiceEditor();
+
+  // Dirt levels
+  document.getElementById('set-dirtLevels').innerHTML = appState.dirtLevels.map(d=>`
+    <div style="background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+        <input type="text" value="${escapeHtml(d.name)}" oninput="updateDirt('${d.id}','name',this.value)" placeholder="Name (EN)" />
+        <input type="text" value="${escapeHtml(d.swedish)}" oninput="updateDirt('${d.id}','swedish',this.value)" placeholder="Swedish" />
+        <input type="number" step="0.05" value="${d.multiplier}" oninput="updateDirt('${d.id}','multiplier',parseFloat(this.value))" placeholder="×" />
+      </div>
+    </div>
+  `).join('');
+
+  // Rules
+  const r = appState.evaluationRules;
+  document.getElementById('set-rules').innerHTML = `
+    <div class="row cols-2">
+      <div><label>Very fast &lt; (%)</label><input type="number" value="${r.veryFastMax}" oninput="appState.evaluationRules.veryFastMax=parseInt(this.value);save()"/></div>
+      <div><label>Excellent ≤ (%)</label><input type="number" value="${r.excellentMax}" oninput="appState.evaluationRules.excellentMax=parseInt(this.value);save()"/></div>
+      <div><label>Acceptable ≤ (%)</label><input type="number" value="${r.acceptableMax}" oninput="appState.evaluationRules.acceptableMax=parseInt(this.value);save()"/></div>
+      <div><label>Slow ≤ (%)</label><input type="number" value="${r.slowMax}" oninput="appState.evaluationRules.slowMax=parseInt(this.value);save()"/></div>
+      <div><label>Clear delay ≤ (%)</label><input type="number" value="${r.delayMax}" oninput="appState.evaluationRules.delayMax=parseInt(this.value);save()"/></div>
+      <div><label>Delay reason required &gt; (%)</label><input type="number" value="${r.delayReasonRequiredAt}" oninput="appState.evaluationRules.delayReasonRequiredAt=parseInt(this.value);save()"/></div>
+    </div>
+  `;
+
+  // Delay reasons
+  document.getElementById('set-delays').innerHTML =
+    appState.delayReasons.map((dr,i)=>`
+      <div class="li">
+        <input type="text" value="${escapeHtml(dr)}" oninput="appState.delayReasons[${i}]=this.value;save()" />
+        <button class="btn xs red" onclick="appState.delayReasons.splice(${i},1);save();renderSettings()">✕</button>
+      </div>
+    `).join('') +
+    `<div class="li"><input type="text" id="newDelayReason" placeholder="New delay reason"/>
+     <button class="btn xs green" onclick="addDelayReason()">+</button></div>`;
+}
+
+function saveCompany(){
+  appState.settings.company = document.getElementById('set-company').value;
+  appState.settings.logoText = document.getElementById('set-logoText').value;
+  appState.settings.reportTitle = document.getElementById('set-reportTitle').value;
+  appState.settings.reportFooter = document.getElementById('set-reportFooter').value;
+  save(); toast('Company info saved','green');
+}
+function savePin(){
+  const v = document.getElementById('set-pin').value.trim();
+  appState.settings.pin = v;
+  save(); toast(v?'PIN set':'PIN disabled','green');
+}
+function addDelayReason(){
+  const v=document.getElementById('newDelayReason').value.trim();
+  if(!v) return;
+  appState.delayReasons.push(v); save(); renderSettings();
+}
+function updateDirt(id, field, value){
+  const d = appState.dirtLevels.find(x=>x.id===id); if(!d) return;
+  d[field] = value; save();
+}
+function addMasterWorker(){
+  const name = document.getElementById('set-newWorker').value.trim();
+  if(!name) return;
+  appState.workers.push({id:uid('w'),name,role:'Worker',level:'Normal',skills:[],active:true});
+  document.getElementById('set-newWorker').value='';
+  save(); renderSettings();
+}
+function removeMasterWorker(id){
+  if(!confirm('Remove this worker from master list?')) return;
+  appState.workers = appState.workers.filter(w=>w.id!==id);
+  save(); renderSettings();
+}
+function editMasterWorker(id){
+  const w = appState.workers.find(x=>x.id===id); if(!w) return;
+  const html = `
+    <div class="grab"></div><h3>Edit worker</h3>
+    <label>Name</label><input type="text" id="ew-name" value="${escapeHtml(w.name)}"/>
+    <label>Role</label>
+    <select id="ew-role">
+      ${['Leader','Worker','Trainee','Driver','Quality controller'].map(r=>`<option ${r===w.role?'selected':''}>${r}</option>`).join('')}
+    </select>
+    <label>Training level</label>
+    <select id="ew-level">
+      ${['New','Under training','Normal','Experienced'].map(r=>`<option ${r===w.level?'selected':''}>${r}</option>`).join('')}
+    </select>
+    <label>Skills (comma separated)</label>
+    <input type="text" id="ew-skills" value="${escapeHtml((w.skills||[]).join(', '))}"/>
+    <div class="btn-row">
+      <button class="btn alt" onclick="closeModal()">Cancel</button>
+      <button class="btn green" onclick="saveEditWorker('${id}')">Save</button>
+    </div>
+  `;
+  openModal(html);
+}
+function saveEditWorker(id){
+  const w = appState.workers.find(x=>x.id===id); if(!w) return;
+  w.name = document.getElementById('ew-name').value.trim()||w.name;
+  w.role = document.getElementById('ew-role').value;
+  w.level = document.getElementById('ew-level').value;
+  w.skills = document.getElementById('ew-skills').value.split(',').map(s=>s.trim()).filter(Boolean);
+  save(); closeModal(); renderSettings();
+}
+
+/* ---- Service / checklist editor ---- */
+
+function addService(){
+  const name = document.getElementById('set-newServiceName').value.trim();
+  if(!name) return;
+  appState.services.push({id:uid('svc'), name, sections:[]});
+  document.getElementById('set-newServiceName').value='';
+  save(); renderSettings();
+}
+function renderServiceEditor(){
+  const id = document.getElementById('set-serviceSelect').value;
+  const svc = appState.services.find(s=>s.id===id);
+  const wrap = document.getElementById('set-serviceEditor');
+  if(!svc){ wrap.innerHTML=''; return; }
+
+  let html = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+    <input type="text" value="${escapeHtml(svc.name)}" oninput="renameService('${svc.id}',this.value)" />
+    ${appState.services.length>1?'<button class="btn red xs" onclick="deleteService(\''+svc.id+'\')">Delete</button>':''}
+  </div>`;
+
+  svc.sections.forEach(sec=>{
+    html += `<div style="background:var(--card-alt);border-radius:10px;padding:10px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="text" value="${escapeHtml(sec.name)}" oninput="renameSection('${svc.id}','${sec.id}',this.value)" />
+        <button class="btn red xs" onclick="deleteSection('${svc.id}','${sec.id}')">✕</button>
+      </div>
+      <div style="margin-top:6px">
+        ${sec.tasks.map(t=>`
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px;background:#fff;border-radius:6px">
+            <input type="text" value="${escapeHtml(t.name)}" style="flex:1;padding:6px 8px;font-size:13px" oninput="updateTaskField('${svc.id}','${sec.id}','${t.id}','name',this.value)" />
+            <input type="number" value="${t.minutes}" style="width:60px;padding:6px;font-size:13px" oninput="updateTaskField('${svc.id}','${sec.id}','${t.id}','minutes',parseFloat(this.value))" />
+            <label style="display:flex;align-items:center;gap:3px;font-size:11px;text-transform:none;margin:0">
+              <input type="checkbox" ${t.addon?'checked':''} onchange="updateTaskField('${svc.id}','${sec.id}','${t.id}','addon',this.checked)" style="width:auto"/>tillval
+            </label>
+            <button class="btn red xs" onclick="deleteTask('${svc.id}','${sec.id}','${t.id}')">✕</button>
+          </div>
+        `).join('')}
+        <button class="btn alt xs" onclick="addTask('${svc.id}','${sec.id}')">+ Add task</button>
+      </div>
+    </div>`;
+  });
+  html += `<button class="btn alt sm" onclick="addSection('${svc.id}')">+ Add section</button>`;
+  wrap.innerHTML = html;
+}
+function renameService(id,v){ const s=appState.services.find(x=>x.id===id); if(s){s.name=v;save();}}
+function deleteService(id){ if(!confirm('Delete this service?')) return;
+  appState.services = appState.services.filter(s=>s.id!==id); save(); renderSettings();}
+function addSection(svcId){ const s=appState.services.find(x=>x.id===svcId);
+  s.sections.push({id:uid('sec'),name:'New section',tasks:[]}); save(); renderServiceEditor();}
+function renameSection(svcId,secId,v){
+  const sec=appState.services.find(x=>x.id===svcId).sections.find(x=>x.id===secId);
+  if(sec){sec.name=v;save();}}
+function deleteSection(svcId,secId){
+  if(!confirm('Delete section?')) return;
+  const s=appState.services.find(x=>x.id===svcId);
+  s.sections = s.sections.filter(x=>x.id!==secId); save(); renderServiceEditor();}
+function addTask(svcId,secId){
+  const sec=appState.services.find(x=>x.id===svcId).sections.find(x=>x.id===secId);
+  sec.tasks.push({id:uid('t'),name:'New task',minutes:10,addon:false}); save(); renderServiceEditor();}
+function updateTaskField(svcId,secId,tId,field,val){
+  const t=appState.services.find(x=>x.id===svcId).sections.find(x=>x.id===secId).tasks.find(x=>x.id===tId);
+  if(t){ t[field]=val; save();}}
+function deleteTask(svcId,secId,tId){
+  if(!confirm('Delete task?')) return;
+  const sec=appState.services.find(x=>x.id===svcId).sections.find(x=>x.id===secId);
+  sec.tasks = sec.tasks.filter(x=>x.id!==tId); save(); renderServiceEditor();}
+
+/* ====================================================================
+   PDF / CSV / JSON EXPORT
+   ==================================================================== */
+
+function exportPDF(){
+  const cj = appState.currentJob || appState.savedJobs[appState.savedJobs.length-1];
+  if(!cj){ toast('Nothing to export','red'); return; }
+
+  if(typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF){
+    toast('PDF library not loaded — using print','red');
+    setTimeout(()=>window.print(), 400);
+    return;
+  }
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm',format:'a4'});
+    const W = 210, M = 14;
+    let y = 18;
+
+    // ---- Header band (navy) ----
+    doc.setFillColor(15,41,82); doc.rect(0,0,W,28,'F');
+    doc.setFillColor(245,179,36); doc.rect(0,28,W,1.5,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold'); doc.setFontSize(16);
+    doc.text(appState.settings.company||'3LUX', M, 13);
+    doc.setFontSize(11); doc.setFont('helvetica','normal');
+    doc.text(appState.settings.reportTitle||'Arbetsrapport', M, 21);
+    doc.setFontSize(9);
+    doc.text('Genererad: '+new Date().toLocaleString('sv-SE'), W-M, 13, {align:'right'});
+    y = 38;
+
+    // ---- Job info box ----
+    doc.setTextColor(15,41,82);
+    doc.setFont('helvetica','bold'); doc.setFontSize(12);
+    doc.text('Bokningsinformation', M, y); y+=2;
+    doc.setDrawColor(217,225,234); doc.line(M,y,W-M,y); y+=5;
+    doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+    const infoRows = [
+      ['Bokning ID', cj.bookingId||'—', 'Datum', cj.date||'—'],
+      ['Service', cj.serviceName||'—', 'Ansvarig', cj.leaderName||'—'],
+      ['Planerad', (cj.plannedStart||'—')+' → '+(cj.plannedEnd||'—'), 'Status', cj.status||'—'],
+    ];
+    infoRows.forEach(r=>{
+      doc.setFont('helvetica','bold'); doc.text(r[0]+':', M, y);
+      doc.setFont('helvetica','normal'); doc.text(String(r[1]), M+30, y);
+      doc.setFont('helvetica','bold'); doc.text(r[2]+':', M+95, y);
+      doc.setFont('helvetica','normal'); doc.text(String(r[3]), M+125, y);
+      y+=6;
+    });
+    y+=2;
+
+    // ---- Team ----
+    if(cj.workers && cj.workers.length){
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+      doc.text('Team och ansvarig', M, y); y+=2; doc.line(M,y,W-M,y); y+=5;
+      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+      cj.workers.forEach(w=>{
+        const lead = w.id===cj.leaderId ? ' (ANSVARIG)':'';
+        doc.text('• '+w.name+' — '+w.role+' · '+w.level+lead, M+2, y); y+=5;
+      });
+      y+=3;
+    }
+
+    // ---- Summary KPIs ----
+    const completed = cj.completedTasks||[];
+    const totRef = completed.reduce((s,t)=>s+(t.referenceMinutes||0),0);
+    const totAdj = completed.reduce((s,t)=>s+(t.adjustedMinutes||0),0);
+    const totAct = completed.reduce((s,t)=>s+(t.actualMinutes||0),0);
+    const diff = totAct - totAdj;
+    const diffPct = totAdj>0? (diff/totAdj)*100 : 0;
+
+    if(y>250){ doc.addPage(); y=18; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+    doc.text('Sammanfattning', M, y); y+=2; doc.line(M,y,W-M,y); y+=5;
+
+    // KPI boxes
+    const kw = (W - 2*M - 6) / 4;
+    const kpis = [
+      ['Referenstid', fmtMin(totRef)],
+      ['Justerad', fmtMin(totAdj)],
+      ['Faktisk', fmtMin(totAct)],
+      ['Avvikelse', (diff>=0?'+':'')+Math.round(diff)+' min ('+(diff>=0?'+':'')+Math.round(diffPct)+'%)']
+    ];
+    kpis.forEach((k,i)=>{
+      const x = M + i*(kw+2);
+      doc.setFillColor(238,243,247); doc.roundedRect(x,y,kw,16,2,2,'F');
+      doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(107,118,134);
+      doc.text(k[0], x+kw/2, y+5, {align:'center'});
+      doc.setFontSize(11); doc.setFont('helvetica','bold');
+      const col = (i===3 && diffPct>15)? [214,58,58] : (i===3 && diffPct>0)? [160,119,0] : [15,41,82];
+      doc.setTextColor(...col);
+      doc.text(String(k[1]), x+kw/2, y+12, {align:'center'});
+    });
+    y+=22;
+
+    // ---- Worker results ----
+    const byWorker = {};
+    completed.forEach(t=>{
+      if(!byWorker[t.workerId]) byWorker[t.workerId]={name:t.workerName, tasks:[]};
+      byWorker[t.workerId].tasks.push(t);
+    });
+    if(Object.keys(byWorker).length){
+      if(y>240){ doc.addPage(); y=18; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+      doc.text('Resultat per medarbetare', M, y); y+=2; doc.line(M,y,W-M,y); y+=5;
+
+      Object.values(byWorker).forEach(w=>{
+        if(y>260){ doc.addPage(); y=18; }
+        const s = computeWorkerSummary(w.tasks);
+        const score = workerScore(w.tasks);
+        doc.setFillColor(248,250,252); doc.roundedRect(M, y, W-2*M, 22, 2, 2, 'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(15,41,82);
+        doc.text(w.name, M+3, y+6);
+        doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(60,60,60);
+        doc.text('Tasks: '+s.count+'  ·  Ref '+Math.round(s.ref)+'m  ·  Justerad '+Math.round(s.adj)+'m  ·  Faktisk '+Math.round(s.act)+'m', M+3, y+12);
+        const ratioTxt = s.avgRatio!=null? Math.round(s.avgRatio*100)+'%' : '—';
+        doc.text('Snittratio: '+ratioTxt+'  ·  Godkänt: '+s.approved+'  ·  Korr: '+s.corrections+'  ·  Avvisat: '+s.rejected+'  ·  Score: '+score+'/100', M+3, y+18);
+        y+=26;
+      });
+    }
+
+    // ---- Tasks table (bundle-aware) ----
+    if(completed.length){
+      if(y>240){ doc.addPage(); y=18; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+      doc.text('Utförda uppgifter', M, y); y+=2; doc.line(M,y,W-M,y); y+=4;
+
+      // header row
+      const cols = [
+        {l:'Personal', w:28},
+        {l:'Område',   w:28},
+        {l:'Uppgift',  w:54},
+        {l:'Ref',      w:14, a:'right'},
+        {l:'Just',     w:14, a:'right'},
+        {l:'Faktisk',  w:16, a:'right'},
+        {l:'Ratio',    w:14, a:'right'},
+        {l:'Kvalitet', w:14},
+      ];
+      doc.setFontSize(8); doc.setFont('helvetica','bold'); doc.setTextColor(15,41,82);
+      doc.setFillColor(207,230,244); doc.rect(M, y, W-2*M, 6, 'F');
+      let cx = M;
+      cols.forEach(c=>{ doc.text(c.l, cx+1+(c.a==='right'?c.w-2:0), y+4, {align:c.a||'left'}); cx+=c.w; });
+      y+=6;
+
+      // Group children by bundleId, separate singletons
+      const bundleMap = {};
+      const singletons = [];
+      completed.forEach(t=>{
+        if(t.isBundleChild && t.bundleId){
+          (bundleMap[t.bundleId] = bundleMap[t.bundleId] || []).push(t);
+        } else {
+          singletons.push(t);
+        }
+      });
+      const bundleParents = cj.completedBundles || [];
+
+      // helper to draw a row
+      let rowIndex = 0;
+      const drawRow = (vals, opts={})=>{
+        if(y>280){ doc.addPage(); y=18; }
+        if(rowIndex%2===0 && !opts.bundleHeader){ doc.setFillColor(248,250,252); doc.rect(M, y, W-2*M, 5.5, 'F'); }
+        if(opts.bundleHeader){
+          doc.setFillColor(232,239,247); doc.rect(M, y, W-2*M, 6, 'F');
+        }
+        let cx = M;
+        vals.forEach((v,j)=>{
+          let s = String(v);
+          if(j<3 && s.length>cols[j].w/2.0) s = s.slice(0, Math.floor(cols[j].w/2.0))+'…';
+          if(opts.bundleHeader){ doc.setFont('helvetica','bold'); doc.setTextColor(15,41,82); doc.setFontSize(8); }
+          else if(opts.child){ doc.setFont('helvetica','italic'); doc.setTextColor(80,80,80); doc.setFontSize(7.5); }
+          else { doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40); doc.setFontSize(8); }
+          // color the ratio col (index 6)
+          if(j===6 && opts.ratioPct!=null && !opts.bundleHeader){
+            if(opts.ratioPct>130) doc.setTextColor(214,58,58);
+            else if(opts.ratioPct>115) doc.setTextColor(160,119,0);
+            else doc.setTextColor(46,160,92);
+          }
+          doc.text(s, cx+1+(cols[j].a==='right'?cols[j].w-2:0), y+(opts.bundleHeader?4:4), {align:cols[j].a||'left'});
+          cx+=cols[j].w;
+        });
+        y += opts.bundleHeader ? 6 : 5;
+        rowIndex++;
+      };
+
+      // Render bundles + children
+      bundleParents.forEach(b=>{
+        const kids = bundleMap[b.bundleId] || [];
+        const ratioPct = b.performanceRatio!=null ? Math.round(b.performanceRatio*100) : null;
+        drawRow([
+          b.workerName, b.sectionName, '📦 '+b.taskName,
+          Math.round(b.referenceMinutes||0)+'',
+          Math.round(b.adjustedMinutes||0)+'',
+          Math.round(b.actualMinutes||0)+'',
+          ratioPct!=null? ratioPct+'%' : '—',
+          (b.quality||'—').slice(0,10)
+        ], {bundleHeader:true, ratioPct});
+        // children indented
+        kids.forEach(c=>{
+          const cr = c.performanceRatio!=null ? Math.round(c.performanceRatio*100) : null;
+          drawRow([
+            '', '', '   ↳ '+c.taskName,
+            Math.round(c.referenceMinutes||0)+'',
+            Math.round(c.adjustedMinutes||0)+'',
+            Math.round(c.actualMinutes||0)+'',
+            cr!=null? cr+'%' : '—',
+            (c.quality||'—').slice(0,10)
+          ], {child:true, ratioPct:cr});
+        });
+        rowIndex = 0;  // reset stripe between bundles
+      });
+
+      // Singletons
+      singletons.forEach(t=>{
+        const ratioPct = t.performanceRatio!=null ? Math.round(t.performanceRatio*100) : null;
+        drawRow([
+          t.workerName, t.sectionName, t.taskName,
+          Math.round(t.referenceMinutes||0)+'',
+          Math.round(t.adjustedMinutes||0)+'',
+          Math.round(t.actualMinutes||0)+'',
+          ratioPct!=null? ratioPct+'%' : '—',
+          (t.quality||'—').slice(0,10)
+        ], {ratioPct});
+      });
+      y+=4;
+    }
+
+    // ---- Deviations ----
+    if(cj.deviations && cj.deviations.length){
+      if(y>250){ doc.addPage(); y=18; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+      doc.text('Avvikelser och noteringar', M, y); y+=2; doc.line(M,y,W-M,y); y+=5;
+      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+      cj.deviations.forEach(dv=>{
+        if(y>275){ doc.addPage(); y=18; }
+        doc.setFont('helvetica','bold');
+        doc.text('• '+dv.title+' ['+dv.severity+']'+(dv.lostMinutes?'  −'+dv.lostMinutes+' min':''), M, y); y+=5;
+        if(dv.description){
+          doc.setFont('helvetica','normal');
+          const lines = doc.splitTextToSize(dv.description, W-2*M-4);
+          lines.forEach(ln=>{ doc.text(ln, M+3, y); y+=4.5; });
+        }
+        y+=2;
+      });
+    }
+
+    // ---- Recommendations ----
+    if(completed.length){
+      const grp = computeGroupEvaluation(completed);
+      if(y>240){ doc.addPage(); y=18; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,41,82);
+      doc.text('Kvalitetsbedömning & rekommendationer', M, y); y+=2; doc.line(M,y,W-M,y); y+=5;
+      doc.setFontSize(10); doc.setFont('helvetica','normal'); doc.setTextColor(40,40,40);
+      doc.text('Gruppens snittprestation: '+(grp.avgPerf!=null? Math.round(grp.avgPerf*100)+'%':'—'), M, y); y+=5;
+      doc.text('Kvalitetsindex: '+grp.qualityScore+' / 100', M, y); y+=5;
+      doc.text('Bäst på tid: '+grp.bestTime, M, y); y+=5;
+      doc.text('Bäst på kvalitet: '+grp.bestQuality, M, y); y+=5;
+      if(grp.recommendations.length){
+        y+=2; doc.setFont('helvetica','bold'); doc.text('Rekommendationer:', M, y); y+=5;
+        doc.setFont('helvetica','normal');
+        grp.recommendations.forEach(r=>{
+          if(y>280){ doc.addPage(); y=18; }
+          const lines = doc.splitTextToSize('• '+r, W-2*M-4);
+          lines.forEach(ln=>{ doc.text(ln, M, y); y+=4.5; });
+        });
+      }
+    }
+
+    // ---- Footer on every page ----
+    const pageCount = doc.internal.getNumberOfPages();
+    for(let p=1;p<=pageCount;p++){
+      doc.setPage(p);
+      doc.setDrawColor(217,225,234); doc.line(M, 285, W-M, 285);
+      doc.setFontSize(8); doc.setTextColor(107,118,134); doc.setFont('helvetica','italic');
+      const footer = appState.settings.reportFooter || 'Intern användning.';
+      const flines = doc.splitTextToSize(footer, W-2*M);
+      doc.text(flines, M, 290);
+      doc.setFont('helvetica','normal');
+      doc.text('Sida '+p+' / '+pageCount, W-M, 290, {align:'right'});
+    }
+
+    const filename = '3LUX_Arbetsrapport_'+(cj.bookingId||cj.id)+'.pdf';
+    doc.save(filename);
+    toast('PDF exported','green');
+  } catch(err){
+    console.error('PDF error',err);
+    toast('PDF failed — using print fallback','red');
+    setTimeout(()=>window.print(), 400);
+  }
+}
+
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(appState, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '3LUX_backup_'+todayISO()+'.json'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  toast('JSON exported','green');
+}
+
+function importJSON(input){
+  const f = input.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = e=>{
+    try{
+      const data = JSON.parse(e.target.result);
+      if(!data.settings || !data.workers){ throw new Error('Invalid file'); }
+      if(!confirm('This will replace ALL local data. Continue?')) return;
+      appState = data;
+      save(); toast('Data imported','green');
+      switchView('job');
+    } catch(err){
+      toast('Import failed: '+err.message,'red');
+    }
+  };
+  r.readAsText(f);
+  input.value='';
+}
+
+function exportCSV(){
+  const cj = appState.currentJob || appState.savedJobs[appState.savedJobs.length-1];
+  if(!cj){ toast('Nothing to export','red'); return; }
+  const rows = [
+    ['Row type','Bundle ID','Bundle name','Bundle task count','Allocated actual',
+     'Bokning ID','Datum','Personal','Område','Uppgift',
+     'Referenstid','Smutsnivå','Multiplikator','Justerad tid','Faktisk tid','Ratio %',
+     'Kvalitet','Delay reason','Notes']
+  ];
+
+  // Bundle parent rows first (rowType=bundle)
+  (cj.completedBundles||[]).forEach(b=>{
+    const ratio = b.performanceRatio!=null?Math.round(b.performanceRatio*100):'';
+    rows.push([
+      'bundle', b.bundleId, b.taskName, b.bundleTaskCount, '',
+      cj.bookingId, cj.date, b.workerName, b.sectionName, b.taskName,
+      b.referenceMinutes||'', b.dirtLevelName||'', b.dirtMultiplier||'',
+      Math.round((b.adjustedMinutes||0)*10)/10, Math.round((b.actualMinutes||0)*10)/10,
+      ratio, b.quality||'', b.delayReason||'', (b.notes||'').replace(/\r?\n/g,' ')
+    ]);
+  });
+
+  // Task rows (children + singletons)
+  (cj.completedTasks||[]).forEach(t=>{
+    const r = t.performanceRatio!=null?Math.round(t.performanceRatio*100):'';
+    rows.push([
+      'task',
+      t.bundleId||'',
+      t.bundleName||'',
+      t.bundleTaskCount||'',
+      t.allocatedActualMinutes!=null ? Math.round(t.allocatedActualMinutes*10)/10 : '',
+      cj.bookingId, cj.date, t.workerName, t.sectionName, t.taskName,
+      t.referenceMinutes||'', t.dirtLevelName||'', t.dirtMultiplier||'',
+      Math.round((t.adjustedMinutes||0)*10)/10, Math.round((t.actualMinutes||0)*10)/10,
+      r, t.quality||'', t.delayReason||'', (t.notes||'').replace(/\r?\n/g,' ')
+    ]);
+  });
+
+  const csv = rows.map(r=>r.map(c=>{
+    const s = String(c==null?'':c);
+    return /[",;\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(';')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='3LUX_'+(cj.bookingId||'job')+'.csv'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('CSV exported','green');
+}
+
+function resetDemo(){
+  if(!confirm('Reset to demo data? Your current data will be lost.')) return;
+  appState = DEFAULT_STATE();
+  save(); toast('Demo data restored','green');
+  switchView('job');
+}
+function clearAll(){
+  if(!confirm('Delete ALL local data? This cannot be undone.')) return;
+  if(!confirm('Are you absolutely sure?')) return;
+  localStorage.removeItem(STORE_KEY);
+  appState = DEFAULT_STATE();
+  save(); toast('All data cleared','red');
+  switchView('job');
+}
+
+/* ====================================================================
+   MODAL HELPERS, PIN, MISC
+   ==================================================================== */
+
+function openModal(html){
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalBack').classList.add('open');
+}
+function closeModal(){
+  document.getElementById('modalBack').classList.remove('open');
+}
+function toggleColl(head){
+  head.parentElement.classList.toggle('open');
+}
+function escapeHtml(s){
+  if(s==null) return '';
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+}
+
+function showQuickStats(){
+  const cj = appState.currentJob;
+  let html = '<div class="grab"></div><h3>Quick stats</h3>';
+  if(cj){
+    const completed = cj.completedTasks||[];
+    html += `<div class="kpi-grid">
+      <div class="kpi"><div class="v">${cj.activeTasks.length}</div><div class="l">Active</div></div>
+      <div class="kpi"><div class="v">${completed.length}</div><div class="l">Completed</div></div>
+      <div class="kpi"><div class="v">${cj.workers.length}</div><div class="l">Team</div></div>
+      <div class="kpi"><div class="v">${cj.deviations?.length||0}</div><div class="l">Deviations</div></div>
+    </div>`;
+  } else {
+    html += '<p>No active job.</p>';
+  }
+  html += `<p style="font-size:12px;color:var(--muted)">Total archived jobs: ${appState.savedJobs.length}</p>
+  <button class="btn alt" onclick="closeModal()">Close</button>`;
+  openModal(html);
+}
+
+function checkPin(){
+  const v = document.getElementById('pinInput').value.trim();
+  if(v === appState.settings.pin){
+    document.getElementById('pinOverlay').style.display='none';
+    document.getElementById('pinInput').value='';
+  } else {
+    toast('Wrong PIN','red');
+  }
+}
+
+/* ====================================================================
+   INITIALIZATION
+   ==================================================================== */
+
+function init(){
+  load();
+  if(appState.settings.pin){
+    document.getElementById('pinOverlay').style.display='flex';
+    document.getElementById('pinInput').addEventListener('keydown', e=>{ if(e.key==='Enter') checkPin(); });
+  }
+  // Initial render
+  renderJob();
+  startLiveTimers();
+
+  // Re-render active list periodically (in case structure changes)
+  setInterval(()=>{
+    const isActive = document.getElementById('view-active').classList.contains('active');
+    if(isActive){
+      // only re-render full list if task count changed (cheap check)
+      const cj=appState.currentJob;
+      if(cj){
+        const cards = document.querySelectorAll('#activeList .active-card').length;
+        if(cards !== cj.activeTasks.length) renderActive();
+      }
+    }
+  }, 2000);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+
+</script>
+</body>
+</html>
